@@ -147,6 +147,9 @@ class UFWManager:
             if panel_port > 0:
                 await self.driver.ufw_allow(str(panel_port), proto="tcp", comment="pyx-panel Management")
 
+            # Enforce default policies: deny incoming, allow outgoing
+            await self.driver.ufw_reset_default_policies()
+
         return await self.driver.ufw_set_enabled(enable)
 
     async def apply_baseline_security(self, panel_port: int = 8000) -> tuple[bool, str]:
