@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Certbot / SSL - pyx-panel{% endblock %}
+
+{% block content %}
+<div x-data="sslManager()" class="space-y-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-800 gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-white">SSL Certificates (Let's Encrypt / Certbot)</h1>
+            <p class="text-sm text-slate-400 mt-1">One-click HTTPS provisioning with automated DNS pre-checks to protect against rate limits.</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 flex items-center space-x-2 text-xs">
+            <span class="text-slate-400">VPS Public IP:</span>
+            <span class="font-mono font-bold text-amber-400">{{ public_ip }}</span>
+        </div>
+    </div>
+
+    <!-- Issue Certificate Card -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+        <h2 class="text-base font-bold text-white mb-2 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            Request SSL Certificate
+        </h2>
+        <p class="text-xs text-slate-400 mb-6">
+            Certbot will obtain a free Let's Encrypt TLS certificate and automatically configure Nginx with HTTP-to-HTTPS redirect.
+        </p>
+
+        <form action="/ssl/provision" method="POST" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Domain Name</label>
+                    <div class="relative">
+                        <input type="text" name="domain" x-model="domain" required placeholder="api.mydomain.com"
+                               class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+                    {% if available_domains %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        <span class="text-[11px] text-slate-500 mr-1">Quick pick:</span>
+                        {% for d in available_domains %}
+                        <button type="button" @click="domain = '{{ d }}'"
+                                class="px-2 py-0.5 rounded text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+                            {{ d }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Email for Renewal Notices (optional)</label>
+                    <input type="email" name="email" placeholder="admin@mydomain.com"
+                           class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    <span class="text-[11px] text-slate-500">Used by Let's Encrypt to notify of expiring certificates</span>
+                </div>
+            </div>
+
+            <!-- DNS Pre-check Status Banner -->
+            <div x-show="dnsStatus" x-cloak class="p-3.5 rounded-lg text-xs"
+                 :class="dnsMatches ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border border-rose-500/40 text-rose-300'">
+                <div class="font-semibold" x-text="dnsMessage"></div>
+                <div x-show="!dnsMatches" class="text-[11px] mt-1 text-rose-400">
+                    Warning: Running Certbot against an unpointed domain may result in Let's Encrypt temporary rate-limiting.
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2">
+                <button type="button" @click="checkDNS()" :disabled="checkingDns || !domain.trim()"
+                        class="px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                    <span x-text="checkingDns ? 'Querying DNS...' : 'Pre-check DNS Resolution'"></span>
+                </button>
+
+                <div class="flex items-center space-x-3">
+                    <label class="flex items-center space-x-2 text-xs text-slate-400 cursor-pointer">
+                        <input type="checkbox" name="force" value="true"
+                               class="rounded bg-slate-800 border-slate-700 text-amber-600 focus:ring-amber-500">
+                        <span>Bypass DNS check</span>
+                    </label>
+
+                    <button type="submit"
+                            class="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 transition">
+                        Run Certbot & Enable SSL
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Active Certificates Table -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <div class="px-6 py-4 border-b border-slate-800">
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider text-slate-400">Installed SSL Certificates</h3>
+        </div>
+        <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
+            <thead class="bg-slate-800/50 text-slate-400 font-semibold uppercase text-[11px] tracking-wider">
+                <tr>
+                    <th class="px-6 py-3.5">Certificate Name</th>
+                    <th class="px-6 py-3.5">Domains</th>
+                    <th class="px-6 py-3.5">Expiry Date</th>
+                    <th class="px-6 py-3.5">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for cert in certs %}
+                <tr class="hover:bg-slate-800/30 transition">
+                    <td class="px-6 py-4 font-mono font-semibold text-white">{{ cert.name }}</td>
+                    <td class="px-6 py-4 font-mono text-xs text-slate-300">{{ cert.domains|join(', ') }}</td>
+                    <td class="px-6 py-4 text-xs text-slate-300">{{ cert.expiry or "Valid" }}</td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            Active
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                        No active Let's Encrypt certificates found yet. Use the form above to issue your first SSL certificate.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function sslManager() {
+        return {
+            domain: '',
+            checkingDns: false,
+            dnsStatus: false,
+            dnsMatches: false,
+            dnsMessage: '',
+
+            async checkDNS() {
+                if (!this.domain.trim()) return;
+                this.checkingDns = true;
+                this.dnsStatus = false;
+                try {
+                    const formData = new FormData();
+                    formData.append('domain', this.domain.trim());
+                    const res = await fetch('/ssl/check-dns', {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const data = await res.json();
+                    this.dnsStatus = true;
+                    this.dnsMatches = data.matches;
+                    if (data.matches) {
+                        this.dnsMessage = `✅ Domain '${data.domain}' resolves to ${data.domain_ips.join(', ')} which matches VPS IP (${data.vps_ip}). Ready to issue!`;
+                    } else if (data.error) {
+                        this.dnsMessage = `❌ DNS Error: ${data.error}`;
+                    } else {
+                        const resolved = data.domain_ips.length ? data.domain_ips.join(', ') : 'none';
+                        this.dnsMessage = `❌ DNS Mismatch: '${data.domain}' resolves to [${resolved}], but your VPS public IP is ${data.vps_ip}.`;
+                    }
+                } catch (e) {
+                    this.dnsStatus = true;
+                    this.dnsMatches = false;
+                    this.dnsMessage = "Error communicating with server.";
+                } finally {
+                    this.checkingDns = false;
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - pyx-panel{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Stat Cards Overview -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <!-- Nginx Status -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Nginx Web Server</span>
+                {% if nginx_status.active %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+                    Running
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                    Stopped
+                </span>
+                {% endif %}
+            </div>
+            <div class="text-xl font-bold text-white">{{ nginx_status.version }}</div>
+            <div class="text-xs text-slate-500 mt-1">Config: {{ sites|length }} sites ({{ enabled_sites }} enabled)</div>
+        </div>
+
+        <!-- Services Status -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Backend Services</span>
+                <span class="text-xs text-slate-500">systemd</span>
+            </div>
+            <div class="text-2xl font-bold text-white">{{ active_services }} <span class="text-sm font-normal text-slate-400">/ {{ services|length }} active</span></div>
+            <div class="text-xs text-slate-500 mt-1">Managed Go & app daemons</div>
+        </div>
+
+        <!-- SSL Status -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">SSL Certificates</span>
+                <span class="text-xs text-slate-500">Certbot</span>
+            </div>
+            <div class="text-2xl font-bold text-white">{{ certs|length }} <span class="text-sm font-normal text-slate-400">domains</span></div>
+            <div class="text-xs text-slate-500 mt-1">Let's Encrypt managed</div>
+        </div>
+
+        <!-- VPS Public IP -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">VPS Public IP</span>
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+            </div>
+            <div class="text-xl font-mono font-bold text-white">{{ public_ip }}</div>
+            <div class="text-xs text-slate-500 mt-1">Point domain A-records here</div>
+        </div>
+    </div>
+
+    <!-- Quick Action Banner -->
+    <div class="bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-slate-900 border border-blue-500/20 rounded-xl p-6">
+        <h2 class="text-lg font-bold text-white mb-1">Quick Actions</h2>
+        <p class="text-sm text-slate-300 mb-4">Common workflows for hosting Go servers and reverse proxying with Nginx.</p>
+        <div class="flex flex-wrap gap-3">
+            <a href="/sites" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20 transition">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Create Nginx Reverse Proxy
+            </a>
+            <a href="/services" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                <svg class="w-4 h-4 mr-2 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                Create Go Service Daemon
+            </a>
+            <a href="/ssl" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                <svg class="w-4 h-4 mr-2 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                Provision SSL Certificate
+            </a>
+        </div>
+    </div>
+
+    <!-- Overview Columns: Sites & Services -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Nginx Sites Column -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-base font-bold text-white flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                    Nginx Sites
+                </h3>
+                <a href="/sites" class="text-xs text-blue-400 hover:underline">Manage All &rarr;</a>
+            </div>
+
+            {% if sites %}
+            <div class="divide-y divide-slate-800">
+                {% for site in sites[:5] %}
+                <div class="py-3 flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="font-semibold text-sm text-white">{{ site.name }}</span>
+                            {% if site.enabled %}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Enabled</span>
+                            {% else %}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">Disabled</span>
+                            {% endif %}
+                            {% if site.ssl_enabled %}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">HTTPS</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-slate-400 mt-0.5 font-mono">
+                            {{ site.domains|join(', ') if site.domains else "default" }}
+                            {% if site.proxy_pass %}
+                            <span class="text-slate-600">&rarr;</span> <span class="text-blue-400">{{ site.proxy_pass }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <a href="/sites/{{ site.name }}" class="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700">
+                        Edit
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-500 py-4 text-center">No Nginx sites configured yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- Backend Services Column -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-base font-bold text-white flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Systemd Services (Go Apps)
+                </h3>
+                <a href="/services" class="text-xs text-blue-400 hover:underline">Manage All &rarr;</a>
+            </div>
+
+            {% if services %}
+            <div class="divide-y divide-slate-800">
+                {% for svc in services[:5] %}
+                <div class="py-3 flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="font-semibold text-sm text-white">{{ svc.name }}</span>
+                            {% if svc.active %}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>
+                            {% else %}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Inactive</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-slate-400 mt-0.5 font-mono truncate max-w-xs">
+                            {{ svc.exec_start or svc.description }}
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        {% if svc.active %}
+                        <form action="/services/{{ svc.name }}/restart" method="POST">
+                            <button type="submit" title="Restart" class="px-2 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300">Restart</button>
+                        </form>
+                        {% else %}
+                        <form action="/services/{{ svc.name }}/start" method="POST">
+                            <button type="submit" title="Start" class="px-2 py-1 text-xs rounded bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white">Start</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-500 py-4 text-center">No systemd services configured yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

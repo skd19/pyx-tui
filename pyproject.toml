@@ -1,0 +1,33 @@
+[project]
+name = "pyx-tui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "skd19", email = "apkd19@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.161.1",
+    "httpx2>=2.16.0",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+    "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+pyx-panel = "pyx_panel.cli:main"
+pyx-tui = "pyx_panel.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ site.name }} - pyx-panel{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-800 gap-4">
+        <div>
+            <div class="flex items-center space-x-3">
+                <a href="/sites" class="text-xs text-blue-400 hover:underline">&larr; Back to Sites</a>
+                <span class="text-slate-600">/</span>
+                <span class="text-xs text-slate-400">{{ site.filename }}</span>
+            </div>
+            <h1 class="text-2xl font-bold text-white mt-1 flex items-center">
+                <span>{{ site.name }}</span>
+                {% if site.enabled %}
+                <span class="ml-3 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Enabled</span>
+                {% else %}
+                <span class="ml-3 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">Disabled</span>
+                {% endif %}
+                {% if site.ssl_enabled %}
+                <span class="ml-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">SSL Active</span>
+                {% endif %}
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <form action="/sites/{{ site.name }}/toggle" method="POST">
+                {% if site.enabled %}
+                <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+                    Disable Site
+                </button>
+                {% else %}
+                <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white">
+                    Enable Site
+                </button>
+                {% endif %}
+            </form>
+            <a href="/ssl" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Manage SSL
+            </a>
+        </div>
+    </div>
+
+    <!-- Raw Editor Form -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+        <form action="/sites/{{ site.name }}/save" method="POST">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Nginx Configuration (<code class="text-slate-300">/etc/nginx/sites-available/{{ site.filename }}</code>)
+                </span>
+                <span class="text-xs text-slate-500">Automatically validated with <code class="text-blue-400">nginx -t</code> before saving</span>
+            </div>
+
+            <textarea name="content" rows="22" required spellcheck="false"
+                      class="w-full p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-sm text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed shadow-inner">{{ site.content }}</textarea>
+
+            <div class="flex items-center justify-between pt-4 mt-2">
+                <div class="text-xs text-slate-400">
+                    💡 If a syntax error is introduced, changes are reverted automatically so live sites stay online.
+                </div>
+                <div class="flex space-x-3">
+                    <a href="/sites" class="px-4 py-2 rounded-lg text-sm bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</a>
+                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30">
+                        Save & Apply Changes
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}pyx-panel{% endblock %} - VPS Nginx & Service Manager</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.13.10/dist/cdn.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                            600: '#475569',
+                        },
+                        brand: {
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white"
+      x-data="watchdogTimer()">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 backdrop-blur bg-slate-900/90">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <a href="/" class="flex items-center space-x-3 text-white font-bold text-lg hover:text-blue-400 transition">
+                    <span class="bg-gradient-to-tr from-blue-600 to-indigo-500 text-white p-2 rounded-lg shadow-md shadow-blue-500/20">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                    </span>
+                    <span>pyx-panel</span>
+                </a>
+
+                {% if is_mock %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    Mock Mode
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-400"></span>
+                    VPS Host
+                </span>
+                {% endif %}
+
+                <!-- Main Navigation Tabs -->
+                <nav class="hidden md:flex space-x-1">
+                    <a href="/" class="px-3 py-2 rounded-md text-sm font-medium {% if active_tab == 'dashboard' %}bg-slate-800 text-blue-400 font-semibold{% else %}text-slate-300 hover:text-white hover:bg-slate-800/60{% endif %} transition">
+                        Dashboard
+                    </a>
+                    <a href="/sites" class="px-3 py-2 rounded-md text-sm font-medium {% if active_tab == 'sites' %}bg-slate-800 text-blue-400 font-semibold{% else %}text-slate-300 hover:text-white hover:bg-slate-800/60{% endif %} transition">
+                        sites
+                    </a>
+                    <a href="/services" class="px-3 py-2 rounded-md text-sm font-medium {% if active_tab == 'services' %}bg-slate-800 text-blue-400 font-semibold{% else %}text-slate-300 hover:text-white hover:bg-slate-800/60{% endif %} transition">
+                        Services
+                    </a>
+                    <a href="/ssl" class="px-3 py-2 rounded-md text-sm font-medium {% if active_tab == 'ssl' %}bg-slate-800 text-blue-400 font-semibold{% else %}text-slate-300 hover:text-white hover:bg-slate-800/60{% endif %} transition">
+                        ssl
+                    </a>
+                </nav>
+            </div>
+
+            <!-- Header Right Controls -->
+            <div class="flex items-center space-x-3">
+                <!-- Nginx Test & Reload Quick Buttons -->
+                <button @click="testNginx()" :disabled="testingNginx"
+                        class="hidden sm:inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                    <svg class="w-3.5 h-3.5 mr-1.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span x-text="testingNginx ? 'Testing...' : 'Test Nginx'">Test Nginx</span>
+                </button>
+
+                <button @click="reloadNginx()" :disabled="reloadingNginx"
+                        class="hidden sm:inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+                    <svg class="w-3.5 h-3.5 mr-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span x-text="reloadingNginx ? 'Reloading...' : 'Reload Nginx'">Reload Nginx</span>
+                </button>
+
+                <!-- Inactivity Watchdog Countdown -->
+                <div class="flex items-center px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300"
+                     title="pyx-panel will automatically exit if no activity is detected">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 mr-2 animate-pulse"></span>
+                    <span>Idle exit: </span>
+                    <span class="font-mono font-semibold text-amber-300 ml-1" x-text="timeFormatted">--:--</span>
+                </div>
+
+                <!-- Shutdown Server Button -->
+                <button @click="confirmShutdown = true"
+                        class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-semibold bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 transition">
+                    <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                    Shutdown Panel
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Global Alerts (Success / Error) -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+        {% if msg %}
+        <div class="p-4 mb-4 rounded-lg bg-emerald-900/40 border border-emerald-500/40 text-emerald-200 text-sm flex items-center justify-between">
+            <div class="flex items-center">
+                <svg class="w-5 h-5 mr-2 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span>{{ msg }}</span>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-emerald-400 hover:text-white">&times;</button>
+        </div>
+        {% endif %}
+
+        {% if error %}
+        <div class="p-4 mb-4 rounded-lg bg-rose-900/40 border border-rose-500/40 text-rose-200 text-sm flex items-center justify-between">
+            <div class="flex items-center">
+                <svg class="w-5 h-5 mr-2 text-rose-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span class="font-mono text-xs">{{ error }}</span>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-rose-400 hover:text-white">&times;</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Main Content Body -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Shutdown Confirmation Modal -->
+    <div x-show="confirmShutdown" x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 shadow-2xl"
+             @click.away="confirmShutdown = false">
+            <div class="flex items-center space-x-3 text-rose-400 mb-4">
+                <div class="p-2 bg-rose-500/10 rounded-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <h3 class="text-lg font-bold text-white">Shutdown pyx-panel?</h3>
+            </div>
+            <p class="text-sm text-slate-300 mb-6">
+                This will safely stop the web management server. Your running Nginx sites, SSL certs, and Go application services will continue running on your VPS undisturbed.
+            </p>
+            <div class="flex justify-end space-x-3">
+                <button @click="confirmShutdown = false"
+                        class="px-4 py-2 rounded-lg text-sm bg-slate-800 hover:bg-slate-700 text-slate-300">
+                    Cancel
+                </button>
+                <button @click="executeShutdown()"
+                        class="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30">
+                    Yes, Stop Server
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shutdown Screen Notice (When server stopped) -->
+    <div x-show="serverShutdown" x-cloak
+         class="fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-4 text-center">
+        <div class="p-4 bg-emerald-500/10 rounded-full text-emerald-400 mb-4">
+            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-2">pyx-panel Stopped</h2>
+        <p class="text-slate-400 max-w-md mb-6">
+            The management server has terminated cleanly. All your Nginx configs and systemd services remain active on the host. You can safely close this browser window.
+        </p>
+    </div>
+
+    <script>
+        function watchdogTimer() {
+            return {
+                remaining: 900,
+                confirmShutdown: false,
+                serverShutdown: false,
+                testingNginx: false,
+                reloadingNginx: false,
+
+                get timeFormatted() {
+                    const m = Math.floor(this.remaining / 60);
+                    const s = this.remaining % 60;
+                    return `${m}:${s < 10 ? '0' : ''}${s}`;
+                },
+
+                init() {
+                    this.pollWatchdog();
+                    setInterval(() => {
+                        if (this.remaining > 0) this.remaining--;
+                    }, 1000);
+                    setInterval(() => {
+                        this.pollWatchdog();
+                    }, 15000);
+                },
+
+                async pollWatchdog() {
+                    try {
+                        const res = await fetch('/api/system/watchdog');
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.remaining = data.remaining_seconds;
+                        } else if (res.status === 401) {
+                            window.location.href = '/login';
+                        }
+                    } catch (e) {
+                        // Connection lost / server stopped
+                    }
+                },
+
+                async executeShutdown() {
+                    this.confirmShutdown = false;
+                    try {
+                        await fetch('/api/system/shutdown', { method: 'POST' });
+                    } catch (e) {}
+                    this.serverShutdown = true;
+                },
+
+                async testNginx() {
+                    this.testingNginx = true;
+                    try {
+                        const res = await fetch('/api/system/test-nginx', { method: 'POST' });
+                        const data = await res.json();
+                        alert((data.valid ? "✅ NGINX SYNTAX OK:\n\n" : "❌ NGINX SYNTAX ERROR:\n\n") + data.output);
+                    } catch (e) {
+                        alert("Error connecting to server");
+                    } finally {
+                        this.testingNginx = false;
+                    }
+                },
+
+                async reloadNginx() {
+                    this.reloadingNginx = true;
+                    try {
+                        const res = await fetch('/api/system/reload-nginx', { method: 'POST' });
+                        const data = await res.json();
+                        alert((data.success ? "✅ SUCCESS:\n\n" : "❌ ERROR:\n\n") + data.message);
+                    } catch (e) {
+                        alert("Error connecting to server");
+                    } finally {
+                        this.reloadingNginx = false;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
