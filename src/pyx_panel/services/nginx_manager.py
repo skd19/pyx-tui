@@ -49,6 +49,8 @@ class NginxManager:
     def _sanitize_name(self, name: str) -> str:
         """Sanitizes site name to a safe filename."""
         cleaned = re.sub(r"[^a-zA-Z0-9_\.-]", "_", name.strip())
+        if self.driver.file_exists(self.available_dir / cleaned):
+            return cleaned
         if not cleaned.endswith(".conf"):
             cleaned += ".conf"
         return cleaned
@@ -59,7 +61,12 @@ class NginxManager:
         sites: list[SiteSummary] = []
 
         for fn in sorted(filenames):
-            if fn.startswith(".") or fn.endswith(".tmp") or fn.endswith(".bak"):
+            if (
+                fn.startswith(".")
+                or fn.endswith(".tmp")
+                or fn.endswith(".bak")
+                or fn in ("default", "default.conf")
+            ):
                 continue
 
             available_path = self.available_dir / fn

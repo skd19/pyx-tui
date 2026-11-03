@@ -59,6 +59,9 @@ chmod +x /usr/local/bin/pyx-panel
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 mkdir -p /etc/systemd/system /opt/apps
 
+# Remove default boilerplate site from sites-enabled to avoid conflicts
+rm -f /etc/nginx/sites-enabled/default
+
 echo "======================================================================"
 echo "          pyx-panel Installation Complete!                            "
 echo "======================================================================"

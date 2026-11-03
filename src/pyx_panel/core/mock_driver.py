@@ -28,66 +28,6 @@ class MockSystemDriver:
         self.mock_certs: list[dict] = []
         self.nginx_running = True
 
-        # Pre-seed a sample Go service if empty
-        self._seed_sample_data()
-
-    def _seed_sample_data(self) -> None:
-        sample_service_file = self.systemd_dir / "go-demo-app.service"
-        if not sample_service_file.exists():
-            sample_service_file.write_text(
-                """[Unit]
-Description=Demo Go API Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/apps/go-demo
-ExecStart=/opt/apps/go-demo/server
-Restart=always
-RestartSec=5s
-Environment="PORT=8080"
-Environment="GIN_MODE=release"
-
-[Install]
-WantedBy=multi-user.target
-""",
-                encoding="utf-8",
-            )
-            self.service_states["go-demo-app.service"] = {
-                "active": True,
-                "active_state": "active",
-                "sub_state": "running",
-                "unit_file_state": "enabled",
-                "pid": "14285",
-                "uptime": datetime.datetime.now().strftime("%a %Y-%m-%d %H:%M:%S UTC"),
-                "description": "Demo Go API Server",
-            }
-
-        sample_site = self.sites_available / "go-demo-app.conf"
-        if not sample_site.exists():
-            sample_site.write_text(
-                """server {
-    listen 80;
-    server_name api.example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-""",
-                encoding="utf-8",
-            )
-            # Create enabled symlink or file
-            self.create_symlink(sample_site, self.sites_enabled / "go-demo-app.conf")
-
     async def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         return 0, f"Mock executed: {' '.join(cmd)}", ""
 

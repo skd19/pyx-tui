@@ -105,7 +105,7 @@
                             {% endif %}
                         </div>
                         <div class="text-xs text-slate-400 mt-0.5 font-mono">
-                            {{ site.domains|join(', ') if site.domains else "default" }}
+                            {{ site.domains|join(', ') if site.domains else "_" }}
                             {% if site.proxy_pass %}
                             <span class="text-slate-600">&rarr;</span> <span class="text-blue-400">{{ site.proxy_pass }}</span>
                             {% endif %}

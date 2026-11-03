@@ -65,3 +65,14 @@ async def test_save_and_revert_invalid_syntax(manager):
 
     # Clean up
     await manager.delete_site("test-valid")
+
+
+def test_list_sites_ignores_default(manager):
+    # Simulate a 'default' site existing on disk
+    default_path = manager.available_dir / "default"
+    manager.driver.write_file(default_path, "server { listen 80; server_name _; }")
+    try:
+        sites = manager.list_sites()
+        assert not any(s.name == "default" or s.filename == "default" for s in sites)
+    finally:
+        manager.driver.delete_file(default_path)
