@@ -288,6 +288,16 @@ class LinuxSystemDriver:
         msg = (stdout + "\n" + stderr).strip()
         return code == 0, msg
 
+    async def ufw_allow_from(self, src_ip: str, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        cmd = ["ufw", "allow", "from", src_ip, "to", "any", "port", str(port)]
+        if proto in ("tcp", "udp"):
+            cmd.extend(["proto", proto])
+        if comment.strip():
+            cmd.extend(["comment", comment.strip()])
+        code, stdout, stderr = await self.run_command(cmd)
+        msg = (stdout + "\n" + stderr).strip()
+        return code == 0, msg
+
     async def ufw_deny(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
         target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
         cmd = ["ufw", "deny", target]
@@ -299,6 +309,12 @@ class LinuxSystemDriver:
 
     async def ufw_delete_rule(self, rule_num: int) -> tuple[bool, str]:
         code, stdout, stderr = await self.run_command(["ufw", "--force", "delete", str(rule_num)])
+        msg = (stdout + "\n" + stderr).strip()
+        return code == 0, msg
+
+    async def ufw_delete_rule_by_spec(self, rule_spec: list[str]) -> tuple[bool, str]:
+        cmd = ["ufw", "--force", "delete"] + rule_spec
+        code, stdout, stderr = await self.run_command(cmd)
         msg = (stdout + "\n" + stderr).strip()
         return code == 0, msg
 

@@ -9,7 +9,16 @@ from pyx_panel.services.nginx_manager import (
 
 @pytest.fixture
 def manager():
-    return NginxManager()
+    mgr = NginxManager()
+    for d in (mgr.available_dir, mgr.enabled_dir):
+        p = d / "default-deny.conf"
+        if mgr.driver.file_exists(p):
+            mgr.driver.delete_file(p)
+    yield mgr
+    for d in (mgr.available_dir, mgr.enabled_dir):
+        p = d / "default-deny.conf"
+        if mgr.driver.file_exists(p):
+            mgr.driver.delete_file(p)
 
 
 def test_generate_reverse_proxy_config(manager):
@@ -103,3 +112,31 @@ def test_list_sites_ignores_default(manager):
         assert not any(s.name == "default" or s.filename == "default" for s in sites)
     finally:
         manager.driver.delete_file(default_path)
+
+
+@pytest.mark.asyncio
+async def test_nginx_default_deny_lifecycle(manager):
+    assert manager.is_default_deny_active() is False
+
+    # Enable default deny catch-all
+    ok, msg = await manager.enable_default_deny()
+    assert ok is True
+    assert manager.is_default_deny_active() is True
+
+    # Verify default-deny.conf is in sites-enabled and contains return 444
+    enabled_conf = manager.driver.read_file(manager.enabled_dir / "default-deny.conf")
+    assert "return 444;" in enabled_conf
+    assert "ssl_reject_handshake on;" in enabled_conf
+
+    # Verify default-deny is NOT shown in normal list_sites()
+    sites = manager.list_sites()
+    assert not any("default-deny" in s.name for s in sites)
+
+    # Disable default deny
+    dis_ok, dis_msg = await manager.disable_default_deny()
+    assert dis_ok is True
+    assert manager.is_default_deny_active() is False
+
+    # Clean up
+    await manager.delete_site("default-deny")
+

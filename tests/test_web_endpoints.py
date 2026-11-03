@@ -164,6 +164,38 @@ def test_firewall_flow(auth_client):
     assert res_preset.status_code == 200
     assert "Security baseline applied" in res_preset.text
 
+    # 4. Apply Cloudflare Web Shield preset
+    res_cf = auth_client.post(
+        "/firewall/preset/cloudflare-shield",
+        data={"block_app_port": "8080"},
+        follow_redirects=True,
+    )
+    assert res_cf.status_code == 200
+    assert "Cloudflare Web Shield" in res_cf.text
+
+    # 5. Toggle Nginx Direct IP Drop (Catch-All)
+    res_dd_on = auth_client.post(
+        "/firewall/default-deny/toggle",
+        follow_redirects=True,
+    )
+    assert res_dd_on.status_code == 200
+    assert "Direct IP reject enabled" in res_dd_on.text
+
+    res_dd_off = auth_client.post(
+        "/firewall/default-deny/toggle",
+        follow_redirects=True,
+    )
+    assert res_dd_off.status_code == 200
+    assert "Direct IP reject disabled" in res_dd_off.text
+
+    # 6. Revert Cloudflare Shield
+    res_cf_rev = auth_client.post(
+        "/firewall/preset/cloudflare-revert",
+        follow_redirects=True,
+    )
+    assert res_cf_rev.status_code == 200
+    assert "Reverted Cloudflare Web Shield" in res_cf_rev.text
+
 
 def test_system_apis(auth_client):
     # Test Nginx

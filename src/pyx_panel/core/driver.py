@@ -93,12 +93,20 @@ class SystemDriver(Protocol):
         """Allow a port or service on UFW."""
         ...
 
+    async def ufw_allow_from(self, src_ip: str, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        """Allow traffic from a specific source IP/CIDR to a port."""
+        ...
+
     async def ufw_deny(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
         """Deny a port or service on UFW."""
         ...
 
     async def ufw_delete_rule(self, rule_num: int) -> tuple[bool, str]:
         """Delete a UFW rule by numbered index."""
+        ...
+
+    async def ufw_delete_rule_by_spec(self, rule_spec: list[str]) -> tuple[bool, str]:
+        """Delete a UFW rule by specification (e.g. ['allow', '80/tcp'])."""
         ...
 
     async def ufw_set_enabled(self, enable: bool) -> tuple[bool, str]:

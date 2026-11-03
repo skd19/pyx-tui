@@ -5,6 +5,7 @@ import re
 from pydantic import BaseModel, Field
 from pyx_panel.config import settings
 from pyx_panel.core import get_driver
+from pyx_panel.services.cloudflare_manager import cloudflare_manager
 
 
 class UFWRule(BaseModel):
@@ -178,6 +179,86 @@ class UFWManager:
             return False, f"Failed to enable UFW: {msg}"
 
         return True, "Security baseline applied: SSH (22), HTTP (80), HTTPS (443), and panel port open with default deny incoming"
+
+    async def is_cloudflare_shield_active(self) -> bool:
+        """Checks if Cloudflare-specific rules are active on ports 80/443."""
+        status = await self.get_status()
+        cf_rules = [r for r in status.rules if "cloudflare" in r.comment.lower() or "cloudflare" in r.from_src.lower()]
+        # If we have Cloudflare rules and no generic open 80/tcp from anywhere
+        has_generic_80 = any(
+            r.action.startswith("ALLOW") and r.port in ("80", "80/tcp") and ("Anywhere" in r.from_src)
+            for r in status.rules
+        )
+        return len(cf_rules) > 0 and not has_generic_80
+
+    async def apply_cloudflare_shield(
+        self, panel_port: int = 8000, block_app_port: str = "8080"
+    ) -> tuple[bool, str]:
+        """
+        Restricts ports 80 and 443 exclusively to Cloudflare published IP ranges.
+        Optionally blocks public access to backend app port (e.g. 8080).
+        Preserves SSH (22) and panel port access.
+        """
+        # 1. Reset default policies: deny incoming, allow outgoing
+        await self.driver.ufw_reset_default_policies()
+
+        # 2. Ensure SSH is allowed
+        await self.driver.ufw_allow("22", proto="tcp", comment="SSH Remote Access")
+
+        # 3. Ensure pyx-panel port is allowed
+        if panel_port > 0:
+            await self.driver.ufw_allow(str(panel_port), proto="tcp", comment="pyx-panel Management")
+
+        # 4. If backend app port specified, block public external access
+        if block_app_port.strip():
+            valid_p, clean_p = self.validate_port_spec(block_app_port.strip())
+            if valid_p:
+                await self.driver.ufw_deny(clean_p, proto="tcp", comment="Block Direct App Access")
+
+        # 5. Fetch Cloudflare IPv4 & IPv6 CIDRs
+        v4_ranges, v6_ranges = await cloudflare_manager.get_cloudflare_ips()
+
+        for ip in v4_ranges:
+            await self.driver.ufw_allow_from(ip, port="80", proto="tcp", comment="Cloudflare IPv4")
+            await self.driver.ufw_allow_from(ip, port="443", proto="tcp", comment="Cloudflare IPv4")
+
+        for ip in v6_ranges:
+            await self.driver.ufw_allow_from(ip, port="80", proto="tcp", comment="Cloudflare IPv6")
+            await self.driver.ufw_allow_from(ip, port="443", proto="tcp", comment="Cloudflare IPv6")
+
+        # 6. Delete unrestricted 80/tcp and 443/tcp rules from Anywhere
+        await self.driver.ufw_delete_rule_by_spec(["allow", "80/tcp"])
+        await self.driver.ufw_delete_rule_by_spec(["allow", "443/tcp"])
+        await self.driver.ufw_delete_rule_by_spec(["allow", "80"])
+        await self.driver.ufw_delete_rule_by_spec(["allow", "443"])
+
+        # 7. Enable UFW
+        success, msg = await self.driver.ufw_set_enabled(True)
+        if not success:
+            return False, f"Failed to enable UFW: {msg}"
+
+        total_ranges = len(v4_ranges) + len(v6_ranges)
+        return True, f"Cloudflare Web Shield active: ports 80/443 restricted to {total_ranges} Cloudflare IP ranges. Public access to app port {block_app_port} blocked."
+
+    async def revert_cloudflare_shield(self, panel_port: int = 8000) -> tuple[bool, str]:
+        """
+        Reverts Cloudflare-only rules, restoring standard public HTTP (80) and HTTPS (443) rules.
+        """
+        # 1. Allow public 80 and 443
+        await self.driver.ufw_allow("80", proto="tcp", comment="HTTP Web Traffic")
+        await self.driver.ufw_allow("443", proto="tcp", comment="HTTPS Web Traffic")
+
+        # 2. Remove Cloudflare-specific rules
+        status = await self.get_status()
+        cf_indices = [
+            r.index for r in status.rules
+            if "cloudflare" in r.comment.lower() or "cloudflare" in r.from_src.lower()
+        ]
+        # Delete from highest index to lowest to preserve numbering
+        for idx in sorted(cf_indices, reverse=True):
+            await self.driver.ufw_delete_rule(idx)
+
+        return True, "Reverted Cloudflare Web Shield: ports 80 and 443 are now open to all incoming traffic"
 
 
 ufw_manager = UFWManager()

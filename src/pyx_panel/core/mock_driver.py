@@ -236,6 +236,22 @@ class MockSystemDriver:
         })
         return True, f"Rule added: allow {target}"
 
+    async def ufw_allow_from(self, src_ip: str, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
+        idx = len(self.ufw_rules) + 1
+        is_v6 = ":" in src_ip
+        self.ufw_rules.append({
+            "index": idx,
+            "port": port,
+            "proto": proto,
+            "to": f"{target} (v6)" if is_v6 else target,
+            "action": "ALLOW IN",
+            "from": f"{src_ip} (v6)" if is_v6 else src_ip,
+            "comment": comment.strip(),
+            "is_v6": is_v6,
+        })
+        return True, f"Rule added: allow from {src_ip} to {target}"
+
     async def ufw_deny(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
         target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
         idx = len(self.ufw_rules) + 1
@@ -266,6 +282,22 @@ class MockSystemDriver:
             r["index"] = i
         self.ufw_rules = new_rules
         return True, f"Rule #{rule_num} deleted"
+
+    async def ufw_delete_rule_by_spec(self, rule_spec: list[str]) -> tuple[bool, str]:
+        # Simple mock deletion based on port matching in spec
+        spec_str = " ".join(rule_spec)
+        new_rules = []
+        deleted = False
+        for r in self.ufw_rules:
+            # Check if port matches e.g. "80/tcp" or "80"
+            if any(part in spec_str for part in [r["port"], r["to"]]) and (r["from"] == "Anywhere" or "Anywhere" in spec_str):
+                deleted = True
+                continue
+            new_rules.append(r)
+        for i, r in enumerate(new_rules, start=1):
+            r["index"] = i
+        self.ufw_rules = new_rules
+        return True, f"Rule matching spec deleted"
 
     async def ufw_set_enabled(self, enable: bool) -> tuple[bool, str]:
         self.ufw_active = enable

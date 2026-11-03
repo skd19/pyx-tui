@@ -111,3 +111,40 @@ async def test_ufw_apply_baseline_security(ufw):
     assert "80" in ports
     assert "443" in ports
     assert "8000" in ports
+
+
+@pytest.mark.asyncio
+async def test_ufw_cloudflare_shield_lifecycle(ufw):
+    # Ensure baseline first
+    await ufw.apply_baseline_security(panel_port=8000)
+    assert await ufw.is_cloudflare_shield_active() is False
+
+    # Apply Cloudflare Shield with app port 8080 blocked
+    success, msg = await ufw.apply_cloudflare_shield(panel_port=8000, block_app_port="8080")
+    assert success is True
+    assert "Cloudflare Web Shield active" in msg
+    assert await ufw.is_cloudflare_shield_active() is True
+
+    status = await ufw.get_status()
+    # Check that app port 8080 is denied
+    app_rule = next((r for r in status.rules if "8080" in r.port and r.action.startswith("DENY")), None)
+    assert app_rule is not None
+
+    # Check Cloudflare rules exist
+    cf_rules = [r for r in status.rules if "cloudflare" in r.comment.lower() or "cloudflare" in r.from_src.lower()]
+    assert len(cf_rules) > 10
+
+    # Revert Cloudflare Shield
+    rev_ok, rev_msg = await ufw.revert_cloudflare_shield(panel_port=8000)
+    assert rev_ok is True
+    assert "reverted" in rev_msg.lower()
+    assert await ufw.is_cloudflare_shield_active() is False
+
+    # Verify generic 80 and 443 are back
+    status_reverted = await ufw.get_status()
+    has_generic_80 = any(
+        r.action.startswith("ALLOW") and ("80" in r.port) and ("Anywhere" in r.from_src)
+        for r in status_reverted.rules
+    )
+    assert has_generic_80 is True
+

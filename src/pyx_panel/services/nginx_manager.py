@@ -65,7 +65,7 @@ class NginxManager:
                 fn.startswith(".")
                 or fn.endswith(".tmp")
                 or fn.endswith(".bak")
-                or fn in ("default", "default.conf")
+                or fn in ("default", "default.conf", "default-deny.conf")
             ):
                 continue
 
@@ -298,6 +298,35 @@ class NginxManager:
 
         await self.driver.reload_nginx()
         return True, f"Site {filename} deleted"
+
+    def is_default_deny_active(self) -> bool:
+        """Checks if the direct IP reject (default-deny catch-all) is currently enabled."""
+        return self.driver.file_exists(self.enabled_dir / "default-deny.conf")
+
+    async def enable_default_deny(self) -> tuple[bool, str]:
+        """
+        Creates and activates Nginx catch-all default_server to reject direct IP hits
+        and unknown hostnames with return 444 (HTTP) and ssl_reject_handshake on (HTTPS).
+        """
+        config = """server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+"""
+        return await self.save_and_validate_site("default-deny", config, enable_if_new=True)
+
+    async def disable_default_deny(self) -> tuple[bool, str]:
+        """Disables the direct IP reject catch-all."""
+        return await self.disable_site("default-deny")
 
 
 nginx_manager = NginxManager()

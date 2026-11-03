@@ -49,6 +49,11 @@ Unlike traditional heavy control panels that run permanently as exposed backgrou
   - Allow or deny traffic on individual ports, port ranges, and protocols with custom comments.
   - **Anti-Lockout Protection**: Prevents enabling UFW unless SSH (22/tcp) and panel port access are preserved.
   - **1-Click Web Security Baseline**: Instantly sets default deny incoming, opens SSH (22), HTTP (80), HTTPS (443), and the panel port, and activates UFW.
+- ☁️ **Cloudflare Web Shield & Direct IP Drop (Catch-All)**:
+  - **Restrict Ports 80 & 443 to Cloudflare**: Locks incoming web traffic strictly to Cloudflare's official IPv4 and IPv6 CIDR blocks fetched live via `httpx2`, blocking direct external web visitors who attempt to bypass Cloudflare.
+  - **App Port Hardening**: Denies public external access to backend app ports (e.g. `8080/tcp`) while apps communicate safely over localhost (`127.0.0.1`).
+  - **Nginx Direct IP Reject**: Activates a default server block that drops scans targeting your raw server IP with HTTP `444` (connection closed with no response) and drops HTTPS with `ssl_reject_handshake on`.
+  - **One-Click Revert**: Easily restore open public HTTP/HTTPS rules when needed.
 - 💻 **Cross-Platform / Mock Development Driver**:
   - Automatically runs in Mock Mode on Windows/macOS or when passing `--mock`, simulating files, systemd, and logs in `.pyx_mock/` for local preview and development without root.
 
@@ -114,14 +119,17 @@ Click the printed link in your terminal to open the web dashboard.
 3. Click **"Pre-check DNS Resolution"** to verify that your domain's A-record points to your VPS IP.
 4. Click **"Run Certbot & Enable SSL"**. Certbot issues your certificate and automatically updates Nginx with HTTPS and HTTP-to-HTTPS redirect.
 
-### 7. Harden Server with UFW Firewall
+### 7. Harden Server with UFW Firewall & Cloudflare Shield
 
 1. Go to the **"firewall"** tab.
 2. Click **"Apply Security Baseline"** to automatically:
    - Ensure **SSH (22/tcp)**, **HTTP (80/tcp)**, **HTTPS (443/tcp)**, and the panel port are explicitly allowed.
-   - Set the default policy to **deny incoming** traffic.
-   - Enable UFW.
-3. Add custom rules for any auxiliary services using the **"Add Port Rule"** modal.
+   - Set default policies: **deny incoming**, **allow outgoing**.
+   - Enable UFW with anti-lockout protection.
+3. If using Cloudflare Proxied mode (orange-cloud DNS):
+   - Click **"Cloudflare Shield"** to restrict ports 80 and 443 exclusively to Cloudflare's IP ranges and block direct public access to your backend application port (e.g. `8080`).
+   - Click **"Direct IP Reject"** toggle to activate Nginx catch-all dropping raw IP scans with HTTP 444 and SSL handshake rejection.
+4. Add custom rules for any auxiliary services using the **"Add Port Rule"** modal.
 
 ### 8. Stop the Panel
 
