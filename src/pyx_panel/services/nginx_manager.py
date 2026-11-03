@@ -229,8 +229,8 @@ class NginxManager:
         # Write new content
         self.driver.write_file(available_path, content)
 
-        # In order for nginx -t to validate this config, it must be linked in sites-enabled
-        self.driver.create_symlink(available_path, enabled_path)
+        # In order for nginx -t to validate this config and for site to be enabled, copy to sites-enabled
+        self.driver.copy_file(available_path, enabled_path)
 
         # Validate with nginx -t
         is_valid, error_msg = await self.driver.test_nginx()
@@ -238,24 +238,26 @@ class NginxManager:
             # Revert
             if old_content:
                 self.driver.write_file(available_path, old_content)
-                if not was_previously_enabled:
-                    self.driver.remove_symlink(enabled_path)
+                if was_previously_enabled:
+                    self.driver.copy_file(available_path, enabled_path)
+                else:
+                    self.driver.delete_file(enabled_path)
             else:
                 self.driver.delete_file(available_path)
-                self.driver.remove_symlink(enabled_path)
+                self.driver.delete_file(enabled_path)
 
             return False, f"Nginx validation failed: {error_msg}"
 
-        # If it was not previously enabled and caller did not request enable, remove the test symlink
+        # If it was not previously enabled and caller did not request enable, remove from sites-enabled
         if not was_previously_enabled and not enable_if_new:
-            self.driver.remove_symlink(enabled_path)
+            self.driver.delete_file(enabled_path)
 
         # Safe reload
         await self.driver.reload_nginx()
         return True, "Site configuration saved and applied successfully"
 
     async def enable_site(self, name: str) -> tuple[bool, str]:
-        """Enable site by creating symlink in sites-enabled and reloading."""
+        """Enable site by copying config into sites-enabled and reloading."""
         filename = self._sanitize_name(name)
         available_path = self.available_dir / filename
         enabled_path = self.enabled_dir / filename
@@ -263,25 +265,25 @@ class NginxManager:
         if not self.driver.file_exists(available_path):
             return False, f"Site {filename} not found in sites-available"
 
-        self.driver.create_symlink(available_path, enabled_path)
+        self.driver.copy_file(available_path, enabled_path)
 
         is_valid, msg = await self.driver.test_nginx()
         if not is_valid:
-            self.driver.remove_symlink(enabled_path)
+            self.driver.delete_file(enabled_path)
             return False, f"Cannot enable site: Nginx syntax error: {msg}"
 
         await self.driver.reload_nginx()
         return True, f"Site {filename} enabled"
 
     async def disable_site(self, name: str) -> tuple[bool, str]:
-        """Disable site by removing symlink in sites-enabled and reloading."""
+        """Disable site by removing from sites-enabled and reloading."""
         filename = self._sanitize_name(name)
         enabled_path = self.enabled_dir / filename
 
         if not self.driver.file_exists(enabled_path):
             return True, f"Site {filename} already disabled"
 
-        self.driver.remove_symlink(enabled_path)
+        self.driver.delete_file(enabled_path)
         await self.driver.reload_nginx()
         return True, f"Site {filename} disabled"
 
@@ -291,7 +293,7 @@ class NginxManager:
         available_path = self.available_dir / filename
         enabled_path = self.enabled_dir / filename
 
-        self.driver.remove_symlink(enabled_path)
+        self.driver.delete_file(enabled_path)
         self.driver.delete_file(available_path)
 
         await self.driver.reload_nginx()

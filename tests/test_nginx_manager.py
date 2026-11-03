@@ -67,6 +67,33 @@ async def test_save_and_revert_invalid_syntax(manager):
     await manager.delete_site("test-valid")
 
 
+@pytest.mark.asyncio
+async def test_enable_site_copies_to_sites_enabled(manager):
+    test_conf = "server { listen 80; server_name copy-test.example.com; }"
+    await manager.save_and_validate_site("copy-test", test_conf, enable_if_new=False)
+
+    avail_path = manager.available_dir / "copy-test.conf"
+    enabled_path = manager.enabled_dir / "copy-test.conf"
+
+    # Initially not enabled
+    assert manager.driver.file_exists(avail_path) is True
+    assert manager.driver.file_exists(enabled_path) is False
+
+    # Enable site -> copies to sites-enabled
+    ok_en, _ = await manager.enable_site("copy-test")
+    assert ok_en is True
+    assert manager.driver.file_exists(enabled_path) is True
+    assert manager.driver.read_file(enabled_path) == test_conf
+
+    # Disable site -> removes from sites-enabled
+    ok_dis, _ = await manager.disable_site("copy-test")
+    assert ok_dis is True
+    assert manager.driver.file_exists(enabled_path) is False
+
+    # Cleanup
+    await manager.delete_site("copy-test")
+
+
 def test_list_sites_ignores_default(manager):
     # Simulate a 'default' site existing on disk
     default_path = manager.available_dir / "default"

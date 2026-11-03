@@ -41,6 +41,10 @@ class SystemDriver(Protocol):
         """Delete file if it exists."""
         ...
 
+    def copy_file(self, src: Path | str, dst: Path | str) -> None:
+        """Copy file from src to dst."""
+        ...
+
     def list_dir(self, path: Path | str) -> list[str]:
         """List files in directory."""
         ...

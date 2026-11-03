@@ -84,6 +84,14 @@ class MockSystemDriver:
             else:
                 p.unlink()
 
+    def copy_file(self, src: Path | str, dst: Path | str) -> None:
+        s = Path(src)
+        d = Path(dst)
+        d.parent.mkdir(parents=True, exist_ok=True)
+        if d.exists() or d.is_symlink():
+            d.unlink()
+        d.write_text(s.read_text(encoding="utf-8"), encoding="utf-8")
+
     def list_dir(self, path: Path | str) -> list[str]:
         p = Path(path)
         if not p.exists() or not p.is_dir():

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -77,6 +78,14 @@ class LinuxSystemDriver:
                 os.rmdir(p)
             else:
                 p.unlink()
+
+    def copy_file(self, src: Path | str, dst: Path | str) -> None:
+        s = Path(src)
+        d = Path(dst)
+        d.parent.mkdir(parents=True, exist_ok=True)
+        if d.is_symlink() or d.exists():
+            d.unlink()
+        shutil.copy2(str(s), str(d))
 
     def list_dir(self, path: Path | str) -> list[str]:
         p = Path(path)
