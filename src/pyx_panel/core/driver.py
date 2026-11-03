@@ -80,3 +80,27 @@ class SystemDriver(Protocol):
     async def list_certificates(self) -> list[dict]:
         """List issued SSL certificates."""
         ...
+
+    async def get_ufw_status(self) -> dict:
+        """Returns UFW firewall status, policies, and list of active rules."""
+        ...
+
+    async def ufw_allow(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        """Allow a port or service on UFW."""
+        ...
+
+    async def ufw_deny(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        """Deny a port or service on UFW."""
+        ...
+
+    async def ufw_delete_rule(self, rule_num: int) -> tuple[bool, str]:
+        """Delete a UFW rule by numbered index."""
+        ...
+
+    async def ufw_set_enabled(self, enable: bool) -> tuple[bool, str]:
+        """Enable or disable UFW firewall."""
+        ...
+
+    async def ufw_reset_default_policies(self) -> tuple[bool, str]:
+        """Sets default policies: deny incoming, allow outgoing."""
+        ...

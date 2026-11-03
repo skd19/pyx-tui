@@ -216,3 +216,91 @@ class LinuxSystemDriver:
                 "expiry": expiry,
             })
         return certs
+
+    async def get_ufw_status(self) -> dict:
+        code, stdout, _ = await self.run_command(["ufw", "status", "verbose"])
+        is_active = "Status: active" in stdout
+
+        default_incoming = "deny"
+        default_outgoing = "allow"
+        m_def = re.search(r"Default:\s*([a-zA-Z]+)\s*\(incoming\),\s*([a-zA-Z]+)\s*\(outgoing\)", stdout)
+        if m_def:
+            default_incoming = m_def.group(1).lower()
+            default_outgoing = m_def.group(2).lower()
+
+        rules = []
+        if is_active:
+            code_num, stdout_num, _ = await self.run_command(["ufw", "status", "numbered"])
+            if code_num == 0:
+                for line in stdout_num.splitlines():
+                    line_s = line.strip()
+                    m = re.match(r"^\[\s*(\d+)\]\s+(.*?)\s{2,}(ALLOW IN|DENY IN|REJECT IN|ALLOW|DENY|REJECT)\s+(.*?)(?:\s+#\s*(.*))?$", line_s)
+                    if m:
+                        index = int(m.group(1))
+                        to_target = m.group(2).strip()
+                        action = m.group(3).strip()
+                        from_src = m.group(4).strip()
+                        comment = (m.group(5) or "").strip()
+
+                        is_v6 = "(v6)" in to_target or "(v6)" in from_src
+                        proto = "any"
+                        port_part = to_target.replace("(v6)", "").strip()
+                        if "/tcp" in port_part:
+                            proto = "tcp"
+                            port_part = port_part.replace("/tcp", "").strip()
+                        elif "/udp" in port_part:
+                            proto = "udp"
+                            port_part = port_part.replace("/udp", "").strip()
+
+                        rules.append({
+                            "index": index,
+                            "port": port_part,
+                            "proto": proto,
+                            "to": to_target,
+                            "action": action,
+                            "from": from_src,
+                            "comment": comment,
+                            "is_v6": is_v6,
+                        })
+
+        return {
+            "active": is_active,
+            "default_incoming": default_incoming,
+            "default_outgoing": default_outgoing,
+            "rules": rules,
+        }
+
+    async def ufw_allow(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
+        cmd = ["ufw", "allow", target]
+        if comment.strip():
+            cmd.extend(["comment", comment.strip()])
+        code, stdout, stderr = await self.run_command(cmd)
+        msg = (stdout + "\n" + stderr).strip()
+        return code == 0, msg
+
+    async def ufw_deny(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
+        cmd = ["ufw", "deny", target]
+        if comment.strip():
+            cmd.extend(["comment", comment.strip()])
+        code, stdout, stderr = await self.run_command(cmd)
+        msg = (stdout + "\n" + stderr).strip()
+        return code == 0, msg
+
+    async def ufw_delete_rule(self, rule_num: int) -> tuple[bool, str]:
+        code, stdout, stderr = await self.run_command(["ufw", "--force", "delete", str(rule_num)])
+        msg = (stdout + "\n" + stderr).strip()
+        return code == 0, msg
+
+    async def ufw_set_enabled(self, enable: bool) -> tuple[bool, str]:
+        cmd = ["ufw", "--force", "enable"] if enable else ["ufw", "disable"]
+        code, stdout, stderr = await self.run_command(cmd)
+        msg = (stdout + "\n" + stderr).strip()
+        return code == 0, msg
+
+    async def ufw_reset_default_policies(self) -> tuple[bool, str]:
+        c1, o1, e1 = await self.run_command(["ufw", "default", "deny", "incoming"])
+        c2, o2, e2 = await self.run_command(["ufw", "default", "allow", "outgoing"])
+        success = (c1 == 0 and c2 == 0)
+        return success, "Default policies configured: deny incoming, allow outgoing"

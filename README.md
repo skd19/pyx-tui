@@ -44,6 +44,11 @@ Unlike traditional heavy control panels that run permanently as exposed backgrou
   - Automated DNS A-record pre-check against your VPS public IP using `httpx2` (prevents Let's Encrypt rate limits on unpointed domains).
   - Automatic `certbot --nginx` certificate issuance with auto-redirect to HTTPS.
   - Expiration tracking for installed certificates.
+- 🛡️ **UFW Firewall & Port Security**:
+  - View real-time firewall status, default incoming/outgoing policies, and numbered active port rules.
+  - Allow or deny traffic on individual ports, port ranges, and protocols with custom comments.
+  - **Anti-Lockout Protection**: Prevents enabling UFW unless SSH (22/tcp) and panel port access are preserved.
+  - **1-Click Web Security Baseline**: Instantly sets default deny incoming, opens SSH (22), HTTP (80), HTTPS (443), and the panel port, and activates UFW.
 - 💻 **Cross-Platform / Mock Development Driver**:
   - Automatically runs in Mock Mode on Windows/macOS or when passing `--mock`, simulating files, systemd, and logs in `.pyx_mock/` for local preview and development without root.
 
@@ -109,7 +114,16 @@ Click the printed link in your terminal to open the web dashboard.
 3. Click **"Pre-check DNS Resolution"** to verify that your domain's A-record points to your VPS IP.
 4. Click **"Run Certbot & Enable SSL"**. Certbot issues your certificate and automatically updates Nginx with HTTPS and HTTP-to-HTTPS redirect.
 
-### 7. Stop the Panel
+### 7. Harden Server with UFW Firewall
+
+1. Go to the **"firewall"** tab.
+2. Click **"Apply Security Baseline"** to automatically:
+   - Ensure **SSH (22/tcp)**, **HTTP (80/tcp)**, **HTTPS (443/tcp)**, and the panel port are explicitly allowed.
+   - Set the default policy to **deny incoming** traffic.
+   - Enable UFW.
+3. Add custom rules for any auxiliary services using the **"Add Port Rule"** modal.
+
+### 8. Stop the Panel
 
 When done managing:
 - Click **"Shutdown Panel"** in the top navigation bar, or press `Ctrl+C` in your terminal.

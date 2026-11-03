@@ -12,6 +12,7 @@ from pyx_panel.core.watchdog import ActivityTrackingMiddleware, watchdog
 from pyx_panel.web.routes import (
     auth_routes,
     dashboard,
+    firewall,
     logs,
     services,
     sites,
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(services.router)
     app.include_router(logs.router)
     app.include_router(ssl.router)
+    app.include_router(firewall.router)
     app.include_router(system.router)
 
     return app

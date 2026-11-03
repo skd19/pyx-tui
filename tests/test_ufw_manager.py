@@ -1,0 +1,113 @@
+"""Unit tests for UFW firewall manager and security safeguards."""
+import pytest
+from pyx_panel.services.ufw_manager import AddRuleForm, UFWManager
+
+
+@pytest.fixture
+def ufw():
+    return UFWManager()
+
+
+@pytest.mark.asyncio
+async def test_ufw_get_status(ufw):
+    status = await ufw.get_status()
+    assert status.active is True
+    assert status.default_incoming == "deny"
+    assert status.default_outgoing == "allow"
+    assert len(status.rules) >= 3
+    # Check that SSH 22 is present in initial mock state
+    has_ssh = any(r.port == "22" for r in status.rules)
+    assert has_ssh is True
+
+
+def test_ufw_port_validation(ufw):
+    # Valid ports
+    ok, val = ufw.validate_port_spec("80")
+    assert ok is True and val == "80"
+
+    ok, val = ufw.validate_port_spec("8000:8010")
+    assert ok is True and val == "8000:8010"
+
+    ok, val = ufw.validate_port_spec("ssh")
+    assert ok is True and val == "ssh"
+
+    # Invalid ports
+    ok, _ = ufw.validate_port_spec("")
+    assert ok is False
+
+    ok, _ = ufw.validate_port_spec("70000")
+    assert ok is False
+
+    ok, _ = ufw.validate_port_spec("8010:8000")  # start > end
+    assert ok is False
+
+    ok, _ = ufw.validate_port_spec("invalid port;")
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_ufw_add_and_delete_rule(ufw):
+    # Add a custom rule
+    form = AddRuleForm(
+        port="9090",
+        proto="tcp",
+        action="allow",
+        comment="Test Custom Service",
+    )
+    success, msg = await ufw.add_rule(form)
+    assert success is True
+    assert "9090" in msg
+
+    status = await ufw.get_status()
+    added_rule = next((r for r in status.rules if r.port == "9090"), None)
+    assert added_rule is not None
+    assert added_rule.comment == "Test Custom Service"
+
+    # Delete the rule
+    del_ok, _ = await ufw.delete_rule(added_rule.index)
+    assert del_ok is True
+
+    # Verify rule is gone
+    status_after = await ufw.get_status()
+    assert not any(r.port == "9090" for r in status_after.rules)
+
+
+@pytest.mark.asyncio
+async def test_ufw_toggle_anti_lockout(ufw):
+    # Temporarily remove SSH rule to test anti-lockout check
+    status = await ufw.get_status()
+    ssh_rule = next((r for r in status.rules if r.port == "22"), None)
+    if ssh_rule:
+        await ufw.delete_rule(ssh_rule.index)
+
+    # Disable firewall first
+    await ufw.toggle_ufw(enable=False)
+    status_disabled = await ufw.get_status()
+    assert status_disabled.active is False
+
+    # Try to enable with auto_allow_ssh=False -> should block
+    blocked, err_msg = await ufw.toggle_ufw(enable=True, auto_allow_ssh=False)
+    assert blocked is False
+    assert "Anti-Lockout Protection" in err_msg
+
+    # Try to enable with auto_allow_ssh=True -> should allow and add SSH 22
+    success, _ = await ufw.toggle_ufw(enable=True, auto_allow_ssh=True, panel_port=8000)
+    assert success is True
+    assert await ufw.is_ssh_allowed() is True
+
+
+@pytest.mark.asyncio
+async def test_ufw_apply_baseline_security(ufw):
+    success, msg = await ufw.apply_baseline_security(panel_port=8000)
+    assert success is True
+    assert "Security baseline applied" in msg
+
+    status = await ufw.get_status()
+    assert status.active is True
+    assert status.default_incoming == "deny"
+
+    ports = [r.port for r in status.rules]
+    assert "22" in ports
+    assert "80" in ports
+    assert "443" in ports
+    assert "8000" in ports

@@ -27,6 +27,14 @@ class MockSystemDriver:
         self.service_states: dict[str, dict] = {}
         self.mock_certs: list[dict] = []
         self.nginx_running = True
+        self.ufw_active = True
+        self.ufw_default_incoming = "deny"
+        self.ufw_default_outgoing = "allow"
+        self.ufw_rules: list[dict] = [
+            {"index": 1, "port": "22", "proto": "tcp", "to": "22/tcp", "action": "ALLOW IN", "from": "Anywhere", "comment": "SSH", "is_v6": False},
+            {"index": 2, "port": "80", "proto": "tcp", "to": "80/tcp", "action": "ALLOW IN", "from": "Anywhere", "comment": "HTTP", "is_v6": False},
+            {"index": 3, "port": "443", "proto": "tcp", "to": "443/tcp", "action": "ALLOW IN", "from": "Anywhere", "comment": "HTTPS", "is_v6": False},
+        ]
 
     async def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         return 0, f"Mock executed: {' '.join(cmd)}", ""
@@ -196,3 +204,67 @@ class MockSystemDriver:
 
     async def list_certificates(self) -> list[dict]:
         return self.mock_certs
+
+    async def get_ufw_status(self) -> dict:
+        return {
+            "active": self.ufw_active,
+            "default_incoming": self.ufw_default_incoming,
+            "default_outgoing": self.ufw_default_outgoing,
+            "rules": [dict(r) for r in self.ufw_rules] if self.ufw_active else [],
+        }
+
+    async def ufw_allow(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
+        idx = len(self.ufw_rules) + 1
+        self.ufw_rules.append({
+            "index": idx,
+            "port": port,
+            "proto": proto,
+            "to": target,
+            "action": "ALLOW IN",
+            "from": "Anywhere",
+            "comment": comment.strip(),
+            "is_v6": False,
+        })
+        return True, f"Rule added: allow {target}"
+
+    async def ufw_deny(self, port: str, proto: str = "tcp", comment: str = "") -> tuple[bool, str]:
+        target = f"{port}/{proto}" if proto in ("tcp", "udp") else port
+        idx = len(self.ufw_rules) + 1
+        self.ufw_rules.append({
+            "index": idx,
+            "port": port,
+            "proto": proto,
+            "to": target,
+            "action": "DENY IN",
+            "from": "Anywhere",
+            "comment": comment.strip(),
+            "is_v6": False,
+        })
+        return True, f"Rule added: deny {target}"
+
+    async def ufw_delete_rule(self, rule_num: int) -> tuple[bool, str]:
+        found = False
+        new_rules = []
+        for r in self.ufw_rules:
+            if r["index"] == rule_num:
+                found = True
+                continue
+            new_rules.append(r)
+        if not found:
+            return False, f"Rule #{rule_num} not found"
+        # Re-index
+        for i, r in enumerate(new_rules, start=1):
+            r["index"] = i
+        self.ufw_rules = new_rules
+        return True, f"Rule #{rule_num} deleted"
+
+    async def ufw_set_enabled(self, enable: bool) -> tuple[bool, str]:
+        self.ufw_active = enable
+        state = "enabled" if enable else "disabled"
+        return True, f"Firewall is now {state}"
+
+    async def ufw_reset_default_policies(self) -> tuple[bool, str]:
+        self.ufw_default_incoming = "deny"
+        self.ufw_default_outgoing = "allow"
+        return True, "Default policies reset to deny incoming, allow outgoing"

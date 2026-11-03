@@ -15,10 +15,10 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# 1. Install system prerequisites (Nginx, Certbot, Python3, curl)
-echo "[+] Installing system prerequisites (Nginx, Certbot, curl)..."
+# 1. Install system prerequisites (Nginx, Certbot, UFW, Python3, curl)
+echo "[+] Installing system prerequisites (Nginx, Certbot, UFW, curl)..."
 apt-get update -y
-apt-get install -y curl git nginx certbot python3-certbot-nginx
+apt-get install -y curl git nginx certbot python3-certbot-nginx ufw
 
 # 2. Install uv if not present
 if ! command -v uv &> /dev/null; then

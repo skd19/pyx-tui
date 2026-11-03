@@ -139,6 +139,32 @@ def test_ssl_flow(auth_client):
     assert res_prov.status_code == 200
 
 
+def test_firewall_flow(auth_client):
+    # 1. View firewall page
+    res = auth_client.get("/firewall")
+    assert res.status_code == 200
+    assert "Firewall & Port Security" in res.text
+
+    # 2. Add rule
+    res_add = auth_client.post(
+        "/firewall/rule/add",
+        data={
+            "port": "5432",
+            "proto": "tcp",
+            "action": "allow",
+            "comment": "Postgres",
+        },
+        follow_redirects=True,
+    )
+    assert res_add.status_code == 200
+    assert "5432" in res_add.text
+
+    # 3. Apply baseline preset
+    res_preset = auth_client.post("/firewall/preset/web-baseline", follow_redirects=True)
+    assert res_preset.status_code == 200
+    assert "Security baseline applied" in res_preset.text
+
+
 def test_system_apis(auth_client):
     # Test Nginx
     res_test = auth_client.post("/api/system/test-nginx")
