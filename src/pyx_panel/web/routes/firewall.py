@@ -1,6 +1,7 @@
 """Firewall (UFW) management web routes."""
 from __future__ import annotations
 
+from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pyx_panel.config import settings
@@ -9,6 +10,18 @@ from pyx_panel.services.ufw_manager import AddRuleForm, ufw_manager
 from pyx_panel.web.auth import require_auth
 
 router = APIRouter(prefix="/firewall", dependencies=[Depends(require_auth)])
+
+
+def _fw_redirect(msg: str = "", error: str = "") -> RedirectResponse:
+    if error:
+        return RedirectResponse(
+            url=f"/firewall?error={quote_plus(error)}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        url=f"/firewall?msg={quote_plus(msg)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.get("", response_class=HTMLResponse)
@@ -49,28 +62,16 @@ async def add_firewall_rule(
     )
     success, msg = await ufw_manager.add_rule(form)
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={msg}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=msg)
+    return _fw_redirect(msg=msg)
 
 
 @router.post("/rule/{index}/delete")
 async def delete_firewall_rule(index: int):
     success, msg = await ufw_manager.delete_rule(index)
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={msg}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=msg)
+    return _fw_redirect(msg=msg)
 
 
 @router.post("/toggle")
@@ -84,28 +85,16 @@ async def toggle_firewall(
         panel_port=settings.panel_port,
     )
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={msg}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=msg)
+    return _fw_redirect(msg=msg)
 
 
 @router.post("/preset/web-baseline")
 async def apply_web_baseline():
     success, msg = await ufw_manager.apply_baseline_security(panel_port=settings.panel_port)
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={msg}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=msg)
+    return _fw_redirect(msg=msg)
 
 
 @router.post("/preset/cloudflare-shield")
@@ -115,45 +104,27 @@ async def apply_cloudflare_shield(block_app_port: str = Form("8080")):
         block_app_port=block_app_port,
     )
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={msg}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=msg)
+    return _fw_redirect(msg=msg)
 
 
 @router.post("/preset/cloudflare-revert")
 async def revert_cloudflare_shield():
     success, msg = await ufw_manager.revert_cloudflare_shield(panel_port=settings.panel_port)
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={msg}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=msg)
+    return _fw_redirect(msg=msg)
 
 
 @router.post("/default-deny/toggle")
 async def toggle_default_deny():
     if nginx_manager.is_default_deny_active():
-        success, err = await nginx_manager.disable_default_deny()
+        success, res_msg = await nginx_manager.disable_default_deny()
         msg = "Direct IP reject disabled: standard Nginx fallback restored"
     else:
-        success, err = await nginx_manager.enable_default_deny()
-        msg = "Direct IP reject enabled: raw VPS IP connections and unknown hostnames dropped with 444"
+        success, res_msg = await nginx_manager.enable_default_deny()
+        msg = res_msg
 
     if not success:
-        return RedirectResponse(
-            url=f"/firewall?error={err}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    return RedirectResponse(
-        url=f"/firewall?msg={msg}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+        return _fw_redirect(error=res_msg)
+    return _fw_redirect(msg=msg)

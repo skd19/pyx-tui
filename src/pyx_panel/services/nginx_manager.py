@@ -307,8 +307,43 @@ class NginxManager:
         """
         Creates and activates Nginx catch-all default_server to reject direct IP hits
         and unknown hostnames with return 444 (HTTP) and ssl_reject_handshake on (HTTPS).
+        Automatically resolves conflicting Ubuntu default site and selects compatible directives.
         """
-        config = """server {
+        # 1. Check for conflicting default_server in active user sites
+        conflicts: list[str] = []
+        default_was_enabled = False
+        default_file = None
+
+        for fname in self.driver.list_dir(self.enabled_dir):
+            if fname in ("default", "default.conf"):
+                default_was_enabled = True
+                default_file = fname
+                continue
+            if fname == "default-deny.conf":
+                continue
+
+            path = self.enabled_dir / fname
+            content = self.driver.read_file(path)
+            if "default_server" in content:
+                conflicts.append(fname)
+
+        if conflicts:
+            return (
+                False,
+                f"Conflicting 'default_server' found in active site(s): {', '.join(conflicts)}. "
+                "Please remove 'default_server' from those sites before enabling Direct IP Drop.",
+            )
+
+        # 2. If Ubuntu boilerplate 'default' exists in sites-enabled, temporarily remove it
+        # so default-deny can bind default_server on port 80/443 without collision
+        if default_was_enabled and default_file:
+            self.driver.delete_file(self.enabled_dir / default_file)
+
+        # 3. Candidate configs from most advanced to universal fallback
+        candidates = [
+            (
+                "IPv4/IPv6 + HTTPS reject",
+                """server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
@@ -321,8 +356,59 @@ server {
     server_name _;
     ssl_reject_handshake on;
 }
-"""
-        return await self.save_and_validate_site("default-deny", config, enable_if_new=True)
+""",
+            ),
+            (
+                "IPv4 + HTTPS reject",
+                """server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+""",
+            ),
+            (
+                "IPv4/IPv6 HTTP catch-all",
+                """server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+""",
+            ),
+            (
+                "IPv4 HTTP catch-all",
+                """server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+""",
+            ),
+        ]
+
+        last_err = ""
+        for desc, conf in candidates:
+            success, msg = await self.save_and_validate_site("default-deny", conf, enable_if_new=True)
+            if success:
+                return True, f"Direct IP reject enabled ({desc}): raw VPS IP connections and unknown hostnames dropped with 444"
+            last_err = msg
+
+        # If all candidates failed, restore default site if it was previously enabled
+        if default_was_enabled and default_file:
+            avail = self.available_dir / default_file
+            if self.driver.file_exists(avail):
+                self.driver.copy_file(avail, self.enabled_dir / default_file)
+
+        await self.disable_default_deny()
+        return False, last_err
 
     async def disable_default_deny(self) -> tuple[bool, str]:
         """Disables the direct IP reject catch-all."""

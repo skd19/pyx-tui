@@ -140,3 +140,38 @@ async def test_nginx_default_deny_lifecycle(manager):
     # Clean up
     await manager.delete_site("default-deny")
 
+
+@pytest.mark.asyncio
+async def test_nginx_default_deny_handles_ubuntu_default_site(manager):
+    # Simulate Ubuntu's boilerplate default site in sites-enabled
+    ubuntu_default = manager.enabled_dir / "default"
+    manager.driver.write_file(ubuntu_default, "server { listen 80 default_server; server_name _; }")
+    assert manager.driver.file_exists(ubuntu_default) is True
+
+    # Enabling default deny should automatically displace Ubuntu's boilerplate default
+    ok, msg = await manager.enable_default_deny()
+    assert ok is True
+    assert manager.is_default_deny_active() is True
+    # The conflicting Ubuntu default should have been removed from sites-enabled
+    assert manager.driver.file_exists(ubuntu_default) is False
+
+    # Clean up
+    await manager.disable_default_deny()
+    await manager.delete_site("default-deny")
+
+
+@pytest.mark.asyncio
+async def test_nginx_default_deny_blocks_on_custom_site_conflict(manager):
+    # Simulate a user's custom site having default_server
+    custom_conf = manager.enabled_dir / "my-custom.conf"
+    manager.driver.write_file(custom_conf, "server { listen 80 default_server; server_name custom.com; }")
+
+    try:
+        ok, err = await manager.enable_default_deny()
+        assert ok is False
+        assert "my-custom.conf" in err
+        assert "Conflicting 'default_server'" in err
+    finally:
+        manager.driver.delete_file(custom_conf)
+
+

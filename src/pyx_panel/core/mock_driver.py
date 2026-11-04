@@ -41,12 +41,18 @@ class MockSystemDriver:
 
     async def test_nginx(self) -> tuple[bool, str]:
         # Validate syntax of all files in sites-enabled (matching real nginx behavior)
+        default_servers = []
         for conf_file in self.sites_enabled.iterdir():
-            if conf_file.is_file() and conf_file.name.endswith(".conf"):
+            if conf_file.is_file():
                 content = conf_file.read_text(encoding="utf-8")
                 # Simple check for balanced braces
                 if content.count("{") != content.count("}"):
                     return False, f"nginx: [emerg] unexpected '}}' or '{{' in {conf_file.name}"
+                # Check for duplicate default_server on port 80
+                if "default_server" in content and ("listen 80" in content or "listen [::]:80" in content):
+                    default_servers.append(conf_file.name)
+        if len(default_servers) > 1:
+            return False, f"nginx: [emerg] 20428#20428: a duplicate default server for 0.0.0.0:80 in {default_servers[-1]}"
         return True, "nginx: configuration file test is successful"
 
     async def reload_nginx(self) -> tuple[bool, str]:
