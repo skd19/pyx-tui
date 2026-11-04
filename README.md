@@ -48,7 +48,12 @@ Unlike traditional heavy control panels that run permanently as exposed backgrou
   - View real-time firewall status, default incoming/outgoing policies, and numbered active port rules.
   - Allow or deny traffic on individual ports, port ranges, and protocols with custom comments.
   - **Anti-Lockout Protection**: Prevents enabling UFW unless SSH (22/tcp) and panel port access are preserved.
+  - **Auto Ephemeral Panel Port**: Automatically allows the panel port (e.g. `8000/tcp`) in UFW on startup and deletes/closes the rule when the server stops (on Ctrl+C, UI shutdown, or watchdog timeout), leaving zero management ports exposed when stopped.
   - **1-Click Web Security Baseline**: Instantly sets default deny incoming, opens SSH (22), HTTP (80), HTTPS (443), and the panel port, and activates UFW.
+- 📦 **System Packages & Prerequisites (`/packages`)**:
+  - **Live Dependency Inspection**: Checks installation states and version numbers for `nginx`, `ufw`, `certbot`, `python3-certbot-nginx`, `curl`, `git`, `uv`, and `systemd`.
+  - **1-Click Install All Missing**: Automatically executes non-interactive `apt-get` and `astral.sh` installers for missing tools.
+  - **Real-Time Live Terminal Logs**: Slide-over drawer streaming `apt-get` output over Server-Sent Events (SSE).
 - ☁️ **Cloudflare Web Shield & Direct IP Drop (Catch-All)**:
   - **Restrict Ports 80 & 443 to Cloudflare**: Locks incoming web traffic strictly to Cloudflare's official IPv4 and IPv6 CIDR blocks fetched live via `httpx2`, blocking direct external web visitors who attempt to bypass Cloudflare.
   - **App Port Hardening**: Denies public external access to backend app ports (e.g. `8080/tcp`) while apps communicate safely over localhost (`127.0.0.1`).

@@ -116,3 +116,11 @@ class SystemDriver(Protocol):
     async def ufw_reset_default_policies(self) -> tuple[bool, str]:
         """Sets default policies: deny incoming, allow outgoing."""
         ...
+
+    async def check_package_status(self, package_name: str, binary_cmd: str | None = None) -> dict:
+        """Checks if a system package or binary is installed, its version, and service state."""
+        ...
+
+    async def install_system_packages(self, packages: list[str]) -> AsyncIterator[str]:
+        """Installs packages via system package manager, yielding output lines in real time."""
+        ...

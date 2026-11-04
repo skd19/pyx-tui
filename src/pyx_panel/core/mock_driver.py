@@ -35,6 +35,26 @@ class MockSystemDriver:
             {"index": 2, "port": "80", "proto": "tcp", "to": "80/tcp", "action": "ALLOW IN", "from": "Anywhere", "comment": "HTTP", "is_v6": False},
             {"index": 3, "port": "443", "proto": "tcp", "to": "443/tcp", "action": "ALLOW IN", "from": "Anywhere", "comment": "HTTPS", "is_v6": False},
         ]
+        self.mock_installed_packages: set[str] = {
+            "nginx",
+            "ufw",
+            "certbot",
+            "python3-certbot-nginx",
+            "curl",
+            "git",
+            "uv",
+            "systemd",
+        }
+        self.mock_package_versions: dict[str, str] = {
+            "nginx": "1.24.0 (Ubuntu)",
+            "ufw": "0.36.2",
+            "certbot": "2.9.0",
+            "python3-certbot-nginx": "2.9.0-1",
+            "curl": "8.5.0",
+            "git": "2.43.0",
+            "uv": "0.4.29",
+            "systemd": "255.4-1ubuntu8",
+        }
 
     async def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         return 0, f"Mock executed: {' '.join(cmd)}", ""
@@ -314,3 +334,31 @@ class MockSystemDriver:
         self.ufw_default_incoming = "deny"
         self.ufw_default_outgoing = "allow"
         return True, "Default policies reset to deny incoming, allow outgoing"
+
+    async def check_package_status(self, package_name: str, binary_cmd: str | None = None) -> dict:
+        installed = package_name in self.mock_installed_packages
+        version = self.mock_package_versions.get(package_name, "1.0.0") if installed else ""
+        service_active = False
+        if package_name == "nginx":
+            service_active = self.nginx_running
+        elif package_name == "ufw":
+            service_active = self.ufw_active
+
+        return {
+            "name": package_name,
+            "installed": installed,
+            "version": version,
+            "service_active": service_active,
+        }
+
+    async def install_system_packages(self, packages: list[str]) -> AsyncIterator[str]:
+        yield f"[pyx-mock] Starting installation of {len(packages)} packages: {', '.join(packages)}"
+        await asyncio.sleep(0.01)
+        for pkg in packages:
+            yield f"[pyx-mock] Fetching & configuring {pkg}..."
+            self.mock_installed_packages.add(pkg)
+            if pkg not in self.mock_package_versions:
+                self.mock_package_versions[pkg] = "1.0.0-mock"
+            await asyncio.sleep(0.01)
+            yield f"[pyx-mock] \u2705 {pkg} installed successfully."
+        yield "[pyx-mock] All requested packages are installed and configured."

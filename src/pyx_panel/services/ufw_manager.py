@@ -260,5 +260,57 @@ class UFWManager:
 
         return True, "Reverted Cloudflare Web Shield: ports 80 and 443 are now open to all incoming traffic"
 
+    async def open_panel_port(self, panel_port: int) -> tuple[bool, str]:
+        """
+        Ensures the panel's management port is open on UFW when active.
+        Called on server startup so the web UI is immediately accessible.
+        """
+        if panel_port <= 0:
+            return True, "Panel port disabled"
+
+        status = await self.get_status()
+        if not status.active:
+            return True, "UFW is inactive; panel port accessible by default"
+
+        port_str = str(panel_port)
+        already_open = any(
+            (r.port == port_str or r.port == f"{port_str}/tcp") and r.action.startswith("ALLOW")
+            for r in status.rules
+        )
+        if not already_open:
+            await self.driver.ufw_allow(port_str, proto="tcp", comment="pyx-panel Ephemeral Port")
+            return True, f"Opened ephemeral firewall port {panel_port}/tcp in UFW"
+
+        return True, f"Firewall port {panel_port}/tcp already allowed in UFW"
+
+    async def close_panel_port(self, panel_port: int) -> tuple[bool, str]:
+        """
+        Closes/deletes the panel's management port rule from UFW upon shutdown.
+        Leaves no open management ports exposed when pyx-panel is stopped.
+        """
+        if panel_port <= 0:
+            return True, "Panel port disabled"
+
+        status = await self.get_status()
+        if not status.active:
+            return True, "UFW is inactive; no firewall rules to clean up"
+
+        port_str = str(panel_port)
+        # 1. Delete by spec
+        await self.driver.ufw_delete_rule_by_spec(["allow", f"{port_str}/tcp"])
+        await self.driver.ufw_delete_rule_by_spec(["allow", port_str])
+
+        # 2. Check remaining rules and delete any leftover matches by index (reverse order)
+        status_updated = await self.get_status()
+        matching_rules = [
+            r for r in status_updated.rules
+            if (r.port == port_str or r.port == f"{port_str}/tcp" or "pyx-panel" in r.comment.lower())
+            and r.action.startswith("ALLOW")
+        ]
+        for rule in sorted(matching_rules, key=lambda x: x.index, reverse=True):
+            await self.driver.ufw_delete_rule(rule.index)
+
+        return True, f"Closed ephemeral firewall port {panel_port}/tcp in UFW"
+
 
 ufw_manager = UFWManager()

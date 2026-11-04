@@ -148,3 +148,35 @@ async def test_ufw_cloudflare_shield_lifecycle(ufw):
     )
     assert has_generic_80 is True
 
+
+@pytest.mark.asyncio
+async def test_ufw_open_and_close_panel_port(ufw):
+    test_port = 9999
+    # Ensure port is not present initially
+    status_init = await ufw.get_status()
+    assert not any(str(test_port) in r.port for r in status_init.rules)
+
+    # 1. Open port on startup
+    open_ok, open_msg = await ufw.open_panel_port(test_port)
+    assert open_ok is True
+    assert str(test_port) in open_msg
+
+    status_open = await ufw.get_status()
+    matching = [r for r in status_open.rules if str(test_port) in r.port]
+    assert len(matching) >= 1
+    assert any("pyx-panel" in r.comment.lower() or r.port == str(test_port) for r in matching)
+
+    # 2. Calling open again should recognize already allowed
+    open_again_ok, open_again_msg = await ufw.open_panel_port(test_port)
+    assert open_again_ok is True
+    assert "already allowed" in open_again_msg.lower()
+
+    # 3. Close port on shutdown
+    close_ok, close_msg = await ufw.close_panel_port(test_port)
+    assert close_ok is True
+    assert str(test_port) in close_msg
+
+    status_closed = await ufw.get_status()
+    assert not any(str(test_port) in r.port for r in status_closed.rules)
+
+

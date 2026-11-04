@@ -116,7 +116,19 @@ def main() -> None:
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
-        print("\n\033[1;32m[pyx-panel] Stopped successfully. VPS remains clean and secure.\033[0m", flush=True)
+        # Belt-and-suspenders fallback: ensure ephemeral UFW port is closed if running on Linux
+        if not settings.mock_system:
+            try:
+                import subprocess
+                subprocess.run(
+                    ["ufw", "--force", "delete", "allow", f"{settings.panel_port}/tcp"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except Exception:
+                pass
+        print(f"\n\033[1;32m[pyx-panel] Stopped successfully. Port {settings.panel_port} closed. VPS remains clean and secure.\033[0m", flush=True)
 
 
 if __name__ == "__main__":

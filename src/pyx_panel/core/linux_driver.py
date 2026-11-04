@@ -329,3 +329,98 @@ class LinuxSystemDriver:
         c2, o2, e2 = await self.run_command(["ufw", "default", "allow", "outgoing"])
         success = (c1 == 0 and c2 == 0)
         return success, "Default policies configured: deny incoming, allow outgoing"
+
+    async def check_package_status(self, package_name: str, binary_cmd: str | None = None) -> dict:
+        cmd_name = binary_cmd or package_name
+        is_installed = False
+        version_str = ""
+        service_active = False
+
+        # 1. Check via dpkg-query for apt packages
+        code, stdout, _ = await self.run_command(["dpkg-query", "-W", "-f=${Status}\t${Version}\n", package_name])
+        if code == 0 and "install ok installed" in stdout:
+            is_installed = True
+            parts = stdout.strip().split("\t")
+            if len(parts) > 1:
+                version_str = parts[1].strip()
+
+        # 2. Check via which/binary if not detected via dpkg (e.g. uv or custom installs)
+        if not is_installed:
+            w_code, w_out, _ = await self.run_command(["which", cmd_name])
+            if w_code == 0 and w_out.strip():
+                is_installed = True
+
+        # Extract cleaner version if missing or binary specific
+        if is_installed and not version_str:
+            v_code, v_out, v_err = await self.run_command([cmd_name, "--version"])
+            if v_code == 0 and (v_out or v_err):
+                version_str = (v_out or v_err).strip().splitlines()[0]
+
+        # 3. Check service state if it's a daemon
+        if package_name in ("nginx", "ufw"):
+            s_code, s_out, _ = await self.run_command(["systemctl", "is-active", package_name])
+            service_active = (s_out.strip() == "active")
+
+        return {
+            "name": package_name,
+            "installed": is_installed,
+            "version": version_str,
+            "service_active": service_active,
+        }
+
+    async def install_system_packages(self, packages: list[str]) -> AsyncIterator[str]:
+        if not packages:
+            yield "No packages specified for installation."
+            return
+
+        apt_pkgs = [p for p in packages if p != "uv"]
+        install_uv = "uv" in packages
+
+        if apt_pkgs:
+            yield f"[1/2] Updating package repositories: apt-get update..."
+            cmd_up = ["apt-get", "update", "-y"]
+            proc_up = await asyncio.create_subprocess_exec(
+                *cmd_up,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            if proc_up.stdout:
+                while True:
+                    line = await proc_up.stdout.readline()
+                    if not line:
+                        break
+                    yield line.decode("utf-8", errors="replace").rstrip("\r\n")
+            await proc_up.wait()
+
+            yield f"[2/2] Installing system packages: {' '.join(apt_pkgs)}..."
+            cmd_in = ["apt-get", "install", "-y", *apt_pkgs]
+            proc_in = await asyncio.create_subprocess_exec(
+                *cmd_in,
+                env=dict(os.environ, DEBIAN_FRONTEND="noninteractive"),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            if proc_in.stdout:
+                while True:
+                    line = await proc_in.stdout.readline()
+                    if not line:
+                        break
+                    yield line.decode("utf-8", errors="replace").rstrip("\r\n")
+            await proc_in.wait()
+
+        if install_uv:
+            yield "[uv] Installing uv package manager via astral.sh..."
+            proc_uv = await asyncio.create_subprocess_shell(
+                "curl -LsSf https://astral.sh/uv/install.sh | sh",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            if proc_uv.stdout:
+                while True:
+                    line = await proc_uv.stdout.readline()
+                    if not line:
+                        break
+                    yield line.decode("utf-8", errors="replace").rstrip("\r\n")
+            await proc_uv.wait()
+
+        yield "[pyx-panel] Package installation process finished."

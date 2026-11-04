@@ -14,11 +14,13 @@ from pyx_panel.web.routes import (
     dashboard,
     firewall,
     logs,
+    packages,
     services,
     sites,
     ssl,
     system,
 )
+from pyx_panel.services.ufw_manager import ufw_manager
 
 logger = logging.getLogger("pyx_panel")
 
@@ -31,11 +33,28 @@ STATIC_DIR = BASE_DIR / "static"
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing pyx-panel...")
-    # Start watchdog (server ref will be set if launched through CLI runner)
+    # 1. Ephemeral firewall port: open panel port if UFW is active
+    try:
+        ok, msg = await ufw_manager.open_panel_port(settings.panel_port)
+        logger.info(f"Firewall startup: {msg}")
+    except Exception as e:
+        logger.warning(f"Could not configure firewall startup port: {e}")
+
+    # 2. Start watchdog (server ref will be set if launched through CLI runner)
     await watchdog.start()
     yield
+
     # Shutdown
+    # 1. Stop watchdog
     await watchdog.stop()
+
+    # 2. Ephemeral firewall port: close panel port when stopping
+    try:
+        ok, msg = await ufw_manager.close_panel_port(settings.panel_port)
+        logger.info(f"Firewall shutdown: {msg}")
+    except Exception as e:
+        logger.warning(f"Could not cleanup firewall shutdown port: {e}")
+
     logger.info("pyx-panel stopped.")
 
 
@@ -67,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(logs.router)
     app.include_router(ssl.router)
     app.include_router(firewall.router)
+    app.include_router(packages.router)
     app.include_router(system.router)
 
     return app

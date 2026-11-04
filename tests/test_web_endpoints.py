@@ -212,3 +212,30 @@ def test_system_apis(auth_client):
     res_wd = auth_client.get("/api/system/watchdog")
     assert res_wd.status_code == 200
     assert res_wd.json()["remaining_seconds"] > 0
+
+
+def test_packages_flow(auth_client):
+    # 1. View packages overview page
+    res = auth_client.get("/packages")
+    assert res.status_code == 200
+    assert "System Packages & Prerequisites" in res.text
+    assert "Nginx Web Server" in res.text
+    assert "UFW Firewall" in res.text
+    assert "Certbot" in res.text
+    assert "python3-certbot-nginx" in res.text
+
+    # 2. Trigger install single package
+    res_single = auth_client.post("/packages/git/install", follow_redirects=True)
+    assert res_single.status_code == 200
+    assert "Package git installed" in res_single.text
+
+    # 3. Trigger install-all
+    res_all = auth_client.post("/packages/install-all", follow_redirects=True)
+    assert res_all.status_code == 200
+
+    # 4. Test SSE installation log stream
+    res_stream = auth_client.get("/packages/install/stream?pkgs=curl")
+    assert res_stream.status_code == 200
+    assert "text/event-stream" in res_stream.headers["content-type"]
+    assert "data:" in res_stream.text
+
