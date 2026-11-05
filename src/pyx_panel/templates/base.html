@@ -246,8 +246,7 @@
     <!-- Shutdown Confirmation Modal                                        -->
     <!-- ================================================================== -->
     <div x-show="confirmShutdown" x-cloak
-         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
-         style="background: rgba(15, 23, 42, 0.6); z-index: 1060; backdrop-filter: blur(4px);">
+         class="app-modal-backdrop" style="z-index: 1060;">
         <div class="card shadow-lg border-0" style="max-width: 440px; width: 100%; border-radius: 1rem;"
              @click.away="confirmShutdown = false">
             <div class="card-body p-4 text-center">
@@ -274,8 +273,7 @@
     <!-- Screen Notice When Server Stops                                    -->
     <!-- ================================================================== -->
     <div x-show="serverShutdown" x-cloak
-         class="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center p-4 bg-white text-center"
-         style="z-index: 1070;">
+         class="app-screen-overlay">
         <div class="p-4 bg-success-subtle text-success rounded-circle mb-3 fs-1">
             <i class="fa-solid fa-check"></i>
         </div>

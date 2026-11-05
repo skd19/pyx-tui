@@ -400,8 +400,7 @@
 
     <!-- 1-Click Harden All Modal -->
     <div x-show="showHardenAllModal" x-cloak
-         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
-         style="background: rgba(15, 23, 42, 0.6); z-index: 1050; backdrop-filter: blur(4px);">
+         class="app-modal-backdrop">
         <div class="card shadow-lg border-0" style="max-width: 540px; width: 100%; border-radius: 1rem;"
              @click.away="showHardenAllModal = false">
             <div class="card-header d-flex align-items-center justify-content-between p-3 border-bottom">
@@ -435,8 +434,7 @@
 
     <!-- SSH Hardening Modal -->
     <div x-show="showSshModal" x-cloak
-         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
-         style="background: rgba(15, 23, 42, 0.6); z-index: 1050; backdrop-filter: blur(4px);">
+         class="app-modal-backdrop">
         <div class="card shadow-lg border-0" style="max-width: 480px; width: 100%; border-radius: 1rem;"
              @click.away="showSshModal = false">
             <div class="card-header d-flex align-items-center justify-content-between p-3 border-bottom">

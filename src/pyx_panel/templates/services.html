@@ -128,8 +128,7 @@
 
     <!-- Create Service Modal -->
     <div x-show="showNewModal" x-cloak
-         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
-         style="background: rgba(15, 23, 42, 0.6); z-index: 1050; backdrop-filter: blur(4px);">
+         class="app-modal-backdrop">
         <div class="card shadow-lg border-0" style="max-width: 650px; width: 100%; border-radius: 1rem;"
              @click.away="showNewModal = false">
             <div class="card-header d-flex align-items-center justify-content-between p-3 border-bottom">
@@ -204,8 +203,7 @@
 
     <!-- Live Log Streaming Drawer -->
     <div x-show="showLogModal" x-cloak
-         class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-end"
-         style="background: rgba(15, 23, 42, 0.6); z-index: 1055; backdrop-filter: blur(4px);">
+         class="app-drawer-backdrop">
         <div class="bg-white border-start h-100 d-flex flex-column p-4 shadow-2xl"
              style="max-width: 780px; width: 100%;"
              @click.away="closeLogs()">
