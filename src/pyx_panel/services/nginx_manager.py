@@ -455,43 +455,139 @@ server {
         """Checks if the global security guard configuration is currently active in conf.d."""
         return self.driver.file_exists(self.conf_d_dir / "pyx-security-guard.conf")
 
+    def is_directive_declared_globally(self, directive: str) -> bool:
+        """
+        Checks whether a given directive (e.g. 'server_tokens', 'keepalive_timeout')
+        is already declared in nginx.conf or existing files in conf.d.
+        """
+        pattern = re.compile(rf"^\s*{re.escape(directive)}\b")
+
+        # 1. Check main nginx.conf if present
+        main_conf = settings.nginx_main_config
+        if self.driver.file_exists(main_conf):
+            try:
+                content = self.driver.read_file(main_conf)
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("#"):
+                        continue
+                    if pattern.match(stripped):
+                        return True
+            except Exception:
+                pass
+
+        # 2. Check other files in conf.d
+        try:
+            if self.conf_d_dir.exists():
+                for p in self.conf_d_dir.iterdir():
+                    if p.name == "pyx-security-guard.conf" or not p.is_file():
+                        continue
+                    content = self.driver.read_file(p)
+                    for line in content.splitlines():
+                        stripped = line.strip()
+                        if stripped.startswith("#"):
+                            continue
+                        if pattern.match(stripped):
+                            return True
+        except Exception:
+            pass
+
+        return False
+
+    def _build_security_guard_content(self, omit_directives: set[str] | None = None) -> str:
+        """Constructs pyx-security-guard.conf while omitting duplicate or conflicting directives."""
+        omit = set(omit_directives or [])
+        lines = [
+            "# Pyx Panel Global Security Hardening Guard",
+            "# Generated automatically by Pyx Panel Security Center",
+            "",
+            "# 1. Hide Nginx Version Signature",
+        ]
+
+        if "server_tokens" in omit or self.is_directive_declared_globally("server_tokens"):
+            lines.append("# server_tokens off; # (omitted: already defined in host Nginx configuration)")
+        else:
+            lines.append("server_tokens off;")
+
+        lines.extend([
+            "",
+            "# 2. Rate Limiting Zones (DDoS, Slowloris, Brute Force protection)",
+            "limit_req_zone $binary_remote_addr zone=pyx_general_limit:10m rate=30r/s;",
+            "limit_req_zone $binary_remote_addr zone=pyx_login_limit:10m rate=5r/m;",
+            "limit_conn_zone $binary_remote_addr zone=pyx_addr_conn:10m;",
+            "",
+            "# 3. Connection & Request Timeouts (Mitigates Slowloris & idle socket starvation)",
+        ])
+
+        for timeout_directive, timeout_val in [
+            ("client_body_timeout", "15s"),
+            ("client_header_timeout", "15s"),
+            ("send_timeout", "15s"),
+        ]:
+            if timeout_directive in omit or self.is_directive_declared_globally(timeout_directive):
+                lines.append(f"# {timeout_directive} {timeout_val}; # (omitted: already defined in host Nginx configuration)")
+            else:
+                lines.append(f"{timeout_directive} {timeout_val};")
+
+        # keepalive_timeout: Standard in Ubuntu/Debian /etc/nginx/nginx.conf ('keepalive_timeout 65;').
+        # Including it in conf.d duplicates the directive at the http level unless absent globally.
+        if "keepalive_timeout" in omit or self.is_directive_declared_globally("keepalive_timeout"):
+            lines.append("# keepalive_timeout 30s; # (omitted: already defined in host Nginx configuration)")
+        else:
+            lines.append("keepalive_timeout 30s;")
+
+        lines.append("")
+        return "\n".join(lines)
+
     async def apply_security_guard(self) -> tuple[bool, str]:
         """
         Creates and activates global security guard config in /etc/nginx/conf.d/pyx-security-guard.conf.
         Hides nginx server tokens, sets Slowloris client timeouts, and configures rate-limiting zones.
+        Gracefully detects and reconciles duplicate directives defined in host nginx.conf.
         """
-        guard_content = """# Pyx Panel Global Security Hardening Guard
-# Generated automatically by Pyx Panel Security Center
-
-# 1. Hide Nginx Version Signature
-server_tokens off;
-
-# 2. Rate Limiting Zones (DDoS, Slowloris, Brute Force protection)
-limit_req_zone $binary_remote_addr zone=pyx_general_limit:10m rate=30r/s;
-limit_req_zone $binary_remote_addr zone=pyx_login_limit:10m rate=5r/m;
-limit_conn_zone $binary_remote_addr zone=pyx_addr_conn:10m;
-
-# 3. Connection & Request Timeouts (Mitigates Slowloris & idle socket starvation)
-client_body_timeout 15s;
-client_header_timeout 15s;
-keepalive_timeout 30s;
-send_timeout 15s;
-"""
         target_path = self.conf_d_dir / "pyx-security-guard.conf"
         old_content = self.driver.read_file(target_path) if self.driver.file_exists(target_path) else None
 
-        self.driver.write_file(target_path, guard_content)
+        omitted_directives: set[str] = set()
+        max_reconcile_attempts = 5
 
-        is_valid, msg = await self.driver.test_nginx()
-        if not is_valid:
+        # Regex to detect duplicate directive error from nginx -t
+        # Example: '2026/11/05 20:32:31 [emerg] 63939#63939: "server_tokens" directive is duplicate in /etc/nginx/conf.d/pyx-security-guard.conf:5 nginx: configuration file /etc/nginx/nginx.conf test failed'
+        dup_pattern = re.compile(r'"([a-zA-Z0-9_]+)" directive is duplicate in .*pyx-security-guard\.conf')
+
+        for _ in range(max_reconcile_attempts):
+            guard_content = self._build_security_guard_content(omitted_directives)
+            self.driver.write_file(target_path, guard_content)
+
+            is_valid, msg = await self.driver.test_nginx()
+            if is_valid:
+                await self.driver.reload_nginx()
+                if omitted_directives:
+                    reconciled_str = ", ".join(sorted(omitted_directives))
+                    return True, f"Nginx Global Security Guard applied successfully (reconciled duplicate host directives: {reconciled_str})"
+                return True, "Nginx Global Security Guard applied successfully"
+
+            # Check if failure is due to a duplicate directive in pyx-security-guard.conf
+            dup_match = dup_pattern.search(msg)
+            if dup_match:
+                dup_directive = dup_match.group(1)
+                if dup_directive not in omitted_directives:
+                    omitted_directives.add(dup_directive)
+                    continue  # Retry with newly omitted directive
+
+            # If not a duplicate directive or already omitted and still failing, abort and rollback
             if old_content is not None:
                 self.driver.write_file(target_path, old_content)
             else:
                 self.driver.delete_file(target_path)
             return False, f"Nginx validation failed with security guard: {msg}"
 
-        await self.driver.reload_nginx()
-        return True, "Nginx Global Security Guard applied successfully"
+        # If loop exhausted
+        if old_content is not None:
+            self.driver.write_file(target_path, old_content)
+        else:
+            self.driver.delete_file(target_path)
+        return False, "Nginx validation failed: maximum reconciliation attempts exceeded for duplicate directives"
 
     async def revert_security_guard(self) -> tuple[bool, str]:
         """Removes global security guard config from conf.d and reloads Nginx."""

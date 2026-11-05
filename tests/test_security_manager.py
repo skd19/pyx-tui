@@ -1,5 +1,6 @@
 """Unit tests for VPS Security Manager and Threat Hardening."""
 import pytest
+from pyx_panel.config import settings
 from pyx_panel.core.mock_driver import MockSystemDriver
 from pyx_panel.services.nginx_manager import nginx_manager
 from pyx_panel.services.security_manager import SecurityManager
@@ -109,6 +110,58 @@ async def test_nginx_security_guard_lifecycle(sec_manager):
     ok, msg = await sec_manager.nginx_mgr.revert_security_guard()
     assert ok
     assert not sec_manager.nginx_mgr.is_security_guard_active()
+
+
+@pytest.mark.asyncio
+async def test_nginx_security_guard_duplicate_reconciliation(sec_manager):
+    main_conf = settings.nginx_main_config
+    sec_manager.driver.write_file(main_conf, "user www-data;\nserver_tokens off;\nkeepalive_timeout 65;\n")
+
+    try:
+        if sec_manager.nginx_mgr.is_security_guard_active():
+            await sec_manager.nginx_mgr.revert_security_guard()
+
+        ok, msg = await sec_manager.nginx_mgr.apply_security_guard()
+        assert ok
+        assert sec_manager.nginx_mgr.is_security_guard_active()
+
+        guard_file = sec_manager.nginx_mgr.conf_d_dir / "pyx-security-guard.conf"
+        content = sec_manager.driver.read_file(guard_file)
+
+        assert "# server_tokens off;" in content
+        assert "omitted" in content.lower() or "already" in content.lower()
+        assert "limit_req_zone" in content
+        assert "client_body_timeout 15s;" in content
+
+        await sec_manager.nginx_mgr.revert_security_guard()
+    finally:
+        if sec_manager.driver.file_exists(main_conf):
+            sec_manager.driver.delete_file(main_conf)
+
+
+@pytest.mark.asyncio
+async def test_nginx_security_guard_reactive_duplicate_recovery(sec_manager, monkeypatch):
+    if sec_manager.nginx_mgr.is_security_guard_active():
+        await sec_manager.nginx_mgr.revert_security_guard()
+
+    original_test = sec_manager.driver.test_nginx
+
+    async def mock_test_with_duplicate():
+        target_path = sec_manager.nginx_mgr.conf_d_dir / "pyx-security-guard.conf"
+        content = sec_manager.driver.read_file(target_path)
+        for line in content.splitlines():
+            if line.strip() == "server_tokens off;":
+                return False, 'nginx: [emerg] 63939#63939: "server_tokens" directive is duplicate in /etc/nginx/conf.d/pyx-security-guard.conf:5 nginx: configuration file /etc/nginx/nginx.conf test failed'
+        return await original_test()
+
+    monkeypatch.setattr(sec_manager.driver, "test_nginx", mock_test_with_duplicate)
+
+    ok, msg = await sec_manager.nginx_mgr.apply_security_guard()
+    assert ok
+    assert "reconciled duplicate host directives: server_tokens" in msg
+    assert sec_manager.nginx_mgr.is_security_guard_active()
+
+    await sec_manager.nginx_mgr.revert_security_guard()
 
 
 @pytest.mark.asyncio

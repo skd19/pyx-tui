@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import AsyncIterator
@@ -17,6 +18,7 @@ class MockSystemDriver:
         self.sites_available = self.base_dir / "nginx" / "sites-available"
         self.sites_enabled = self.base_dir / "nginx" / "sites-enabled"
         self.conf_d = self.base_dir / "nginx" / "conf.d"
+        self.nginx_conf = self.base_dir / "nginx" / "nginx.conf"
         self.systemd_dir = self.base_dir / "systemd" / "system"
         
         # Ensure directories exist
@@ -99,6 +101,31 @@ class MockSystemDriver:
                 content = conf_file.read_text(encoding="utf-8")
                 if content.count("{") != content.count("}"):
                     return False, f"nginx: [emerg] unexpected '}}' or '{{' in conf.d/{conf_file.name}"
+
+        # Check duplicate global directives between nginx.conf and conf.d
+        if self.nginx_conf.is_file():
+            nginx_conf_content = self.nginx_conf.read_text(encoding="utf-8")
+            global_directives = ["server_tokens", "keepalive_timeout", "client_body_timeout", "client_header_timeout", "send_timeout"]
+            active_global_dirs = set()
+            for line in nginx_conf_content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                for d in global_directives:
+                    if re.match(rf"^{d}\b", stripped):
+                        active_global_dirs.add(d)
+
+            for conf_file in self.conf_d.iterdir():
+                if conf_file.is_file():
+                    content = conf_file.read_text(encoding="utf-8")
+                    for line_idx, line in enumerate(content.splitlines(), start=1):
+                        stripped = line.strip()
+                        if stripped.startswith("#"):
+                            continue
+                        for d in active_global_dirs:
+                            if re.match(rf"^{d}\b", stripped):
+                                return False, f'nginx: [emerg] 63939#63939: "{d}" directive is duplicate in {conf_file.as_posix()}:{line_idx} nginx: configuration file {self.nginx_conf.as_posix()} test failed'
+
         return True, "nginx: configuration file test is successful"
 
     async def reload_nginx(self) -> tuple[bool, str]:
