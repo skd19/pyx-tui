@@ -1,6 +1,6 @@
 # pyx-panel: On-Demand VPS Nginx & Systemd Service Manager
 
-A modern, lightweight Python web interface built with **FastAPI**, **HTMX**, and **Alpine.js**, packaged using **`uv`**, to manage Nginx virtual host configs, one-click SSL with Certbot, and systemd service lifecycles for backend applications (like Go servers) on Linux VPS hosts.
+A modern, lightweight Python web interface built with **FastAPI**, **Bootstrap 5.3**, **Font Awesome 6**, **HTMX**, and **Alpine.js**, packaged using **`uv`**, to manage Nginx virtual host configs, one-click SSL with Certbot, and systemd service lifecycles for backend applications (like Go servers) on Linux VPS hosts.
 
 ---
 
@@ -67,6 +67,10 @@ Unlike traditional heavy control panels that run permanently as exposed backgrou
   - **App Port Hardening**: Denies public external access to backend app ports (e.g. `8080/tcp`) while apps communicate safely over localhost (`127.0.0.1`).
   - **Nginx Direct IP Reject**: Activates a default server block that drops scans targeting your raw server IP with HTTP `444` (connection closed with no response) and drops HTTPS with `ssl_reject_handshake on`.
   - **One-Click Revert**: Easily restore open public HTTP/HTTPS rules when needed.
+- 🎨 **Modern Minimalist Light UI with Left-Side Navigation Panel**:
+  - **Left-Side Sidebar Menu**: Fixed desktop left-side navigation panel (width 260px) housing the brand identity, environment status badge (`VPS Host` / `Mock Mode`), vertical navigation links with Font Awesome icons, live idle watchdog countdown, quick Nginx Test & Reload buttons, and a clean Shutdown button.
+  - **Responsive Mobile-Friendly Drawer**: Smoothly transitions on mobile/tablet viewports into a slim top app bar with a hamburger toggle that slides open an offcanvas navigation drawer.
+  - **Clean Typography & Spacing**: Built on Bootstrap 5.3 with Google Fonts Inter, crisp `#ffffff` cards on a soft `#f8fafc` canvas, subtle borders, and soft modern shadows.
 - 💻 **Cross-Platform / Mock Development Driver**:
   - Automatically runs in Mock Mode on Windows/macOS or when passing `--mock`, simulating files, systemd, and logs in `.pyx_mock/` for local preview and development without root.
 

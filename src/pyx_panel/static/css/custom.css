@@ -1,9 +1,323 @@
-/* Custom styles for pyx-panel */
-.animate-fade-in {
-    animation: fadeIn 0.2s ease-in-out;
+/* ==========================================================================
+   pyx-panel - Modern Minimalist Light Theme Stylesheet
+   Framework: Bootstrap 5.3 + Font Awesome 6
+   ========================================================================== */
+
+:root {
+    --app-sidebar-width: 260px;
+    --app-bg: #f8fafc;
+    --app-card-bg: #ffffff;
+    --app-border: #e2e8f0;
+    --app-border-light: #f1f5f9;
+    --app-text-main: #0f172a;
+    --app-text-muted: #64748b;
+    --app-primary: #2563eb;
+    --app-primary-hover: #1d4ed8;
+    --app-success: #10b981;
+    --app-warning: #f59e0b;
+    --app-danger: #ef4444;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--app-bg);
+    color: var(--app-text-main);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
+code, pre, kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* --------------------------------------------------------------------------
+   Layout Structure: Desktop Sidebar & Main Content
+   -------------------------------------------------------------------------- */
+.app-wrapper {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+}
+
+.app-sidebar {
+    width: var(--app-sidebar-width);
+    flex-shrink: 0;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    background-color: #ffffff;
+    border-right: 1px solid var(--app-border);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    z-index: 1020;
+    overflow-y: auto;
+}
+
+.app-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--app-bg);
+    min-height: 100vh;
+}
+
+.app-content {
+    flex: 1;
+    padding: 1.75rem 2rem;
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* Mobile Topbar */
+.mobile-topbar {
+    background-color: #ffffff;
+    border-bottom: 1px solid var(--app-border);
+    padding: 0.75rem 1.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 1010;
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar Navigation Menu
+   -------------------------------------------------------------------------- */
+.sidebar-brand {
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--app-border-light);
+}
+
+.sidebar-brand-link {
+    text-decoration: none;
+    color: var(--app-text-main);
+    font-weight: 700;
+    font-size: 1.15rem;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.sidebar-brand-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.625rem;
+    background: linear-gradient(135deg, #2563eb, #4f46e5);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+}
+
+.sidebar-nav-container {
+    padding: 1rem 0.875rem;
+    flex: 1;
+}
+
+.sidebar-nav .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.5rem;
+    color: #475569;
+    font-weight: 500;
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+    transition: all 0.15s ease-in-out;
+    text-decoration: none;
+}
+
+.sidebar-nav .nav-link i {
+    width: 1.5rem;
+    font-size: 0.95rem;
+    color: #94a3b8;
+    transition: color 0.15s ease;
+}
+
+.sidebar-nav .nav-link:hover {
+    color: var(--app-text-main);
+    background-color: #f1f5f9;
+}
+
+.sidebar-nav .nav-link:hover i {
+    color: var(--app-primary);
+}
+
+.sidebar-nav .nav-link.active {
+    color: var(--app-primary);
+    background-color: #eff6ff;
+    font-weight: 600;
+}
+
+.sidebar-nav .nav-link.active i {
+    color: var(--app-primary);
+}
+
+.sidebar-footer {
+    padding: 1rem 1rem;
+    border-top: 1px solid var(--app-border-light);
+    background-color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   Cards, Tables, & Surfaces
+   -------------------------------------------------------------------------- */
+.card {
+    background-color: var(--app-card-bg);
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
+    background-color: transparent;
+    border-bottom: 1px solid var(--app-border);
+    padding: 1rem 1.25rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+.table {
+    --bs-table-color: var(--app-text-main);
+    --bs-table-bg: transparent;
+    --bs-table-border-color: var(--app-border);
+}
+
+.table thead th {
+    background-color: #f8fafc;
+    color: var(--app-text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.table tbody td {
+    padding: 0.875rem 1rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+/* --------------------------------------------------------------------------
+   Subtle Badges
+   -------------------------------------------------------------------------- */
+.badge-subtle-success {
+    background-color: #ecfdf5 !important;
+    color: #065f46 !important;
+    border: 1px solid #a7f3d0;
+}
+
+.badge-subtle-primary {
+    background-color: #eff6ff !important;
+    color: #1e40af !important;
+    border: 1px solid #bfdbfe;
+}
+
+.badge-subtle-warning {
+    background-color: #fffbeb !important;
+    color: #92400e !important;
+    border: 1px solid #fde68a;
+}
+
+.badge-subtle-danger {
+    background-color: #fef2f2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fecaca;
+}
+
+.badge-subtle-secondary {
+    background-color: #f1f5f9 !important;
+    color: #475569 !important;
+    border: 1px solid #e2e8f0;
+}
+
+.badge-subtle-info {
+    background-color: #f0fdfa !important;
+    color: #0f766e !important;
+    border: 1px solid #99f6e4;
+}
+
+/* --------------------------------------------------------------------------
+   Interactive Controls & Buttons
+   -------------------------------------------------------------------------- */
+.btn {
+    font-weight: 500;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: all 0.15s ease-in-out;
+}
+
+.btn-sm {
+    padding: 0.3rem 0.625rem;
+    font-size: 0.8125rem;
+    border-radius: 0.375rem;
+}
+
+.form-control, .form-select {
+    border-color: var(--app-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    padding: 0.55rem 0.75rem;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--app-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* --------------------------------------------------------------------------
+   Terminal Window (Log Viewers & Live Streams)
+   -------------------------------------------------------------------------- */
+.terminal-window {
+    background-color: #0f172a;
+    color: #38bdf8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    padding: 1rem;
+    border-radius: 0.625rem;
+    overflow-y: auto;
+    border: 1px solid #1e293b;
+    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.4);
+}
+
+.pulse-indicator {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@media (max-width: 991.98px) {
+    .app-content {
+        padding: 1.25rem 1rem;
+    }
 }

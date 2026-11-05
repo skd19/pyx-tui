@@ -10,373 +10,360 @@
     showCloudflareModal: false,
     showCloudflareRules: false,
     toggleTargetState: true
-}">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-800 gap-4">
+}" class="d-flex flex-column gap-4">
+    <!-- Page Header -->
+    <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between pb-3 border-bottom gap-3">
         <div>
-            <h1 class="text-2xl font-bold text-white">Firewall & Port Security (UFW)</h1>
-            <p class="text-sm text-slate-400 mt-1">Harden incoming traffic, isolate backend ports (e.g. 8080), and restrict web access to Cloudflare.</p>
+            <h1 class="h3 fw-bold text-dark mb-1">Firewall & Port Security (UFW)</h1>
+            <p class="text-muted text-sm mb-0">Harden incoming traffic, isolate backend ports (e.g. 8080), and restrict web access to Cloudflare.</p>
         </div>
-        <div class="flex items-center space-x-3">
-            <button @click="showAddModal = true"
-                    class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20 transition">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                Add Port Rule
+        <div>
+            <button @click="showAddModal = true" type="button" class="btn btn-primary">
+                <i class="fa-solid fa-plus me-1"></i> Add Port Rule
             </button>
         </div>
     </div>
 
-    <!-- Status Overview Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+    <!-- Status Overview Cards Grid -->
+    <div class="row g-3">
         <!-- Firewall Active State Card -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Firewall Status</span>
-                {% if fw_status.active %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
-                    Active
-                </span>
-                {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1.5"></span>
-                    Inactive
-                </span>
-                {% endif %}
-            </div>
-            <div class="flex items-center justify-between mt-2">
-                <span class="text-lg font-bold text-white">UFW</span>
-                {% if fw_status.active %}
-                <form action="/firewall/toggle" method="POST" class="inline">
-                    <input type="hidden" name="enable" value="false">
-                    <button type="submit" class="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 border border-slate-700 transition"
-                            onclick="return confirm('Disable UFW firewall? All incoming ports will be exposed directly.');">
-                        Disable UFW
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase text-muted">Firewall Status</span>
+                    {% if fw_status.active %}
+                    <span class="badge badge-subtle-success text-xs">
+                        <span class="pulse-indicator bg-success me-1"></span>Active
+                    </span>
+                    {% else %}
+                    <span class="badge badge-subtle-danger text-xs">Inactive</span>
+                    {% endif %}
+                </div>
+                <div class="d-flex align-items-center justify-content-between mt-2">
+                    <span class="h5 fw-bold text-dark mb-0">UFW</span>
+                    {% if fw_status.active %}
+                    <form action="/firewall/toggle" method="POST" class="d-inline">
+                        <input type="hidden" name="enable" value="false">
+                        <button type="submit" class="btn btn-sm btn-outline-danger py-1 px-2 text-xs"
+                                onclick="return confirm('Disable UFW firewall? All incoming ports will be exposed directly.');">
+                            Disable UFW
+                        </button>
+                    </form>
+                    {% else %}
+                    <button type="button" @click="showToggleModal = true; toggleTargetState = true"
+                            class="btn btn-sm btn-success text-white py-1 px-2 text-xs">
+                        Enable UFW
                     </button>
-                </form>
-                {% else %}
-                <button type="button" @click="showToggleModal = true; toggleTargetState = true"
-                        class="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition">
-                    Enable UFW
-                </button>
-                {% endif %}
+                    {% endif %}
+                </div>
+                <div class="text-xs text-muted mt-2">Policy: <code class="text-dark">{{ fw_status.default_incoming }}</code> incoming</div>
             </div>
-            <div class="text-[11px] text-slate-500 mt-2">Policy: <span class="text-slate-300 font-mono">{{ fw_status.default_incoming }}</span> incoming</div>
         </div>
 
         <!-- Cloudflare Shield Status Card -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Cloudflare Shield</span>
-                {% if cf_shield_active %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5"></span>
-                    Shield Active
-                </span>
-                {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
-                    Standard Web
-                </span>
-                {% endif %}
-            </div>
-            <div class="text-lg font-bold text-white mt-2">
-                {% if cf_shield_active %}Ports 80/443 Locked{% else %}Public 80/443{% endif %}
-            </div>
-            <div class="text-xs text-slate-500 mt-1">
-                {% if cf_shield_active %}Only Cloudflare IPs can connect{% else %}Direct IP connections open{% endif %}
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase text-muted">Cloudflare Shield</span>
+                    {% if cf_shield_active %}
+                    <span class="badge badge-subtle-warning text-xs">
+                        <span class="pulse-indicator bg-warning me-1"></span>Shield Active
+                    </span>
+                    {% else %}
+                    <span class="badge badge-subtle-secondary text-xs">Standard Web</span>
+                    {% endif %}
+                </div>
+                <div class="h5 fw-bold text-dark mt-2 mb-0">
+                    {% if cf_shield_active %}Ports 80/443 Locked{% else %}Public 80/443{% endif %}
+                </div>
+                <div class="text-xs text-muted mt-1">
+                    {% if cf_shield_active %}Only Cloudflare IPs can connect{% else %}Direct IP connections open{% endif %}
+                </div>
             </div>
         </div>
 
         <!-- Direct IP Reject (Catch-All) Card -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Direct IP Reject</span>
-                {% if default_deny_active %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    Drop 444
-                </span>
-                {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
-                    Off
-                </span>
-                {% endif %}
-            </div>
-            <div class="text-lg font-bold text-white mt-2">Nginx Catch-All</div>
-            <div class="text-xs text-slate-500 mt-1">
-                {% if default_deny_active %}Drops direct IP visits & scans{% else %}Direct IP visits allowed{% endif %}
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase text-muted">Direct IP Reject</span>
+                    {% if default_deny_active %}
+                    <span class="badge badge-subtle-success text-xs">Drop 444</span>
+                    {% else %}
+                    <span class="badge badge-subtle-secondary text-xs">Off</span>
+                    {% endif %}
+                </div>
+                <div class="h5 fw-bold text-dark mt-2 mb-0">Nginx Catch-All</div>
+                <div class="text-xs text-muted mt-1">
+                    {% if default_deny_active %}Drops direct IP visits & scans{% else %}Direct IP visits allowed{% endif %}
+                </div>
             </div>
         </div>
 
         <!-- Panel Port Status Card -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">pyx-panel Port</span>
-                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">Active</span>
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase text-muted">pyx-panel Port</span>
+                    <span class="badge badge-subtle-primary text-xs">Active</span>
+                </div>
+                <div class="h5 font-monospace fw-bold text-primary mt-2 mb-0">:{{ panel_port }}</div>
+                <div class="text-xs text-muted mt-1">Preserved automatically against lockouts</div>
             </div>
-            <div class="text-xl font-mono font-bold text-white">:{{ panel_port }}</div>
-            <div class="text-xs text-slate-500 mt-1">Preserved automatically against lockouts</div>
         </div>
     </div>
 
     <!-- Security Presets Row -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+    <div class="row g-4">
         <!-- Cloudflare-Only Shield Hardening Card -->
-        <div class="bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900 border border-amber-500/30 rounded-xl p-5 flex flex-col justify-between shadow-sm">
-            <div>
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center space-x-2">
-                        <span class="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                        </span>
-                        <h2 class="text-base font-bold text-white">Cloudflare-Only Web Shield</h2>
+        <div class="col-12 col-lg-6">
+            <div class="card h-100 p-4 shadow-sm border-warning-subtle d-flex flex-column justify-content-between">
+                <div>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="p-2 rounded bg-warning-subtle text-warning">
+                                <i class="fa-solid fa-cloud-bolt"></i>
+                            </span>
+                            <h5 class="fw-bold text-dark mb-0">Cloudflare-Only Web Shield</h5>
+                        </div>
+                        {% if cf_shield_active %}
+                        <span class="badge badge-subtle-success text-xs">Active</span>
+                        {% endif %}
                     </div>
+                    <p class="text-xs text-muted mt-2 lh-base">
+                        Restricts ports <b>80</b> and <b>443</b> strictly to Cloudflare's published IPv4 & IPv6 CIDRs and blocks external access to your backend app port (e.g. <b>8080/tcp</b>). Anyone attempting to bypass Cloudflare and connect to your IP directly will be dropped by UFW.
+                    </p>
+                    <div class="text-xs text-warning mt-2">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i> Ensure your domain in Cloudflare is in <b>Proxied (Orange Cloud)</b> mode before enabling.
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-top d-flex align-items-center justify-content-between">
                     {% if cf_shield_active %}
-                    <span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Active</span>
+                    <form action="/firewall/preset/cloudflare-revert" method="POST"
+                          onsubmit="return confirm('Revert Cloudflare Shield? Ports 80 and 443 will be re-opened to all direct internet traffic.');">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                            Revert to Public Web Server
+                        </button>
+                    </form>
+                    <span class="text-xs text-success d-flex align-items-center gap-1">
+                        <i class="fa-solid fa-circle-check"></i> Protected by Cloudflare CIDRs
+                    </span>
+                    {% else %}
+                    <button type="button" @click="showCloudflareModal = true" class="btn btn-sm btn-warning text-dark fw-semibold">
+                        Enable Cloudflare-Only Shield
+                    </button>
+                    <span class="text-xs text-muted">Requires Cloudflare Proxy</span>
                     {% endif %}
                 </div>
-                <p class="text-xs text-slate-300 mt-2 leading-relaxed">
-                    Restricts ports <b>80</b> and <b>443</b> strictly to Cloudflare's published IPv4 & IPv6 CIDRs and blocks external access to your backend app port (e.g. <b>8080/tcp</b>). Anyone attempting to bypass Cloudflare and connect to your IP directly will be dropped by UFW.
-                </p>
-                <div class="text-[11px] text-amber-400/90 mt-2">
-                    ⚠️ <i>Ensure your domain in Cloudflare is in <b>Proxied (Orange Cloud)</b> mode before enabling.</i>
-                </div>
-            </div>
-
-            <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
-                {% if cf_shield_active %}
-                <form action="/firewall/preset/cloudflare-revert" method="POST"
-                      onsubmit="return confirm('Revert Cloudflare Shield? Ports 80 and 443 will be re-opened to all direct internet traffic.');">
-                    <button type="submit" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-                        Revert to Public Web Server
-                    </button>
-                </form>
-                <span class="text-xs text-emerald-400 flex items-center">
-                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    Protected by Cloudflare CIDRs
-                </span>
-                {% else %}
-                <button type="button" @click="showCloudflareModal = true"
-                        class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 transition">
-                    Enable Cloudflare-Only Shield
-                </button>
-                <span class="text-xs text-slate-400">Requires Cloudflare Proxy</span>
-                {% endif %}
             </div>
         </div>
 
         <!-- Direct IP Reject (Nginx Catch-All) Card -->
-        <div class="bg-gradient-to-br from-indigo-950/30 via-slate-900 to-slate-900 border border-indigo-500/30 rounded-xl p-5 flex flex-col justify-between shadow-sm">
-            <div>
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center space-x-2">
-                        <span class="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
-                        </span>
-                        <h2 class="text-base font-bold text-white">Drop Direct IP Hits (Nginx Catch-All)</h2>
+        <div class="col-12 col-lg-6">
+            <div class="card h-100 p-4 shadow-sm border-primary-subtle d-flex flex-column justify-content-between">
+                <div>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="p-2 rounded bg-primary-subtle text-primary">
+                                <i class="fa-solid fa-ban"></i>
+                            </span>
+                            <h5 class="fw-bold text-dark mb-0">Drop Direct IP Hits (Nginx Catch-All)</h5>
+                        </div>
+                        {% if default_deny_active %}
+                        <span class="badge badge-subtle-success text-xs">Active</span>
+                        {% endif %}
                     </div>
-                    {% if default_deny_active %}
-                    <span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Active</span>
-                    {% endif %}
+                    <p class="text-xs text-muted mt-2 lh-base">
+                        Adds an Nginx catch-all <code class="text-primary font-monospace">default_server</code> block that drops direct visits to <code class="text-dark font-monospace">http://&lt;IP&gt;</code> with <b>HTTP 444</b> (connection closed without response) and terminates TLS handshakes on <code class="text-dark font-monospace">https://&lt;IP&gt;</code> using <code class="text-primary font-monospace">ssl_reject_handshake on</code>.
+                    </p>
+                    <div class="text-xs text-muted mt-2">
+                        Only requests with legitimate hostnames will be served.
+                    </div>
                 </div>
-                <p class="text-xs text-slate-300 mt-2 leading-relaxed">
-                    Adds an Nginx catch-all <code class="text-indigo-300 font-mono">default_server</code> block that drops direct visits to <code class="text-slate-300 font-mono">http://&lt;IP&gt;</code> with <b>HTTP 444</b> (connection closed without response) and terminates TLS handshakes on <code class="text-slate-300 font-mono">https://&lt;IP&gt;</code> using <code class="text-indigo-300 font-mono">ssl_reject_handshake on</code>.
-                </p>
-                <div class="text-[11px] text-slate-400 mt-2">
-                    Only requests with legitimate hostnames (e.g. <code class="text-blue-400">apkfine.com</code>) will be served.
-                </div>
-            </div>
 
-            <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
-                <form action="/firewall/default-deny/toggle" method="POST">
-                    {% if default_deny_active %}
-                    <button type="submit" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-                        Disable Catch-All
-                    </button>
-                    {% else %}
-                    <button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition">
-                        Enable Direct IP Drop
-                    </button>
-                    {% endif %}
-                </form>
-                <span class="text-xs text-slate-400">
-                    {% if default_deny_active %}Returns 444 & Rejects SSL{% else %}Default Nginx page active{% endif %}
-                </span>
+                <div class="mt-4 pt-3 border-top d-flex align-items-center justify-content-between">
+                    <form action="/firewall/default-deny/toggle" method="POST">
+                        {% if default_deny_active %}
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                            Disable Catch-All
+                        </button>
+                        {% else %}
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            Enable Direct IP Drop
+                        </button>
+                        {% endif %}
+                    </form>
+                    <span class="text-xs text-muted">
+                        {% if default_deny_active %}Returns 444 & Rejects SSL{% else %}Default Nginx page active{% endif %}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Quick Allow Common Ports -->
-    <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
-        <span class="text-slate-400 font-semibold mr-1">Quick Allow:</span>
-        <form action="/firewall/rule/add" method="POST" class="inline">
-            <input type="hidden" name="port" value="22">
-            <input type="hidden" name="proto" value="tcp">
-            <input type="hidden" name="action" value="allow">
-            <input type="hidden" name="comment" value="SSH Access">
-            <button type="submit" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-                + SSH (22/tcp)
-            </button>
-        </form>
-        <form action="/firewall/rule/add" method="POST" class="inline">
-            <input type="hidden" name="port" value="80">
-            <input type="hidden" name="proto" value="tcp">
-            <input type="hidden" name="action" value="allow">
-            <input type="hidden" name="comment" value="HTTP Web Traffic">
-            <button type="submit" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-                + HTTP (80/tcp)
-            </button>
-        </form>
-        <form action="/firewall/rule/add" method="POST" class="inline">
-            <input type="hidden" name="port" value="443">
-            <input type="hidden" name="proto" value="tcp">
-            <input type="hidden" name="action" value="allow">
-            <input type="hidden" name="comment" value="HTTPS SSL Traffic">
-            <button type="submit" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-                + HTTPS (443/tcp)
-            </button>
-        </form>
-        <form action="/firewall/rule/add" method="POST" class="inline">
-            <input type="hidden" name="port" value="{{ panel_port }}">
-            <input type="hidden" name="proto" value="tcp">
-            <input type="hidden" name="action" value="allow">
-            <input type="hidden" name="comment" value="pyx-panel Management">
-            <button type="submit" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-                + Panel ({{ panel_port }}/tcp)
-            </button>
-        </form>
+    <!-- Quick Allow / Quick Deny Common Ports -->
+    <div class="card p-3 shadow-sm bg-light border">
+        <div class="d-flex flex-wrap align-items-center gap-2 text-xs">
+            <span class="text-muted fw-bold me-1">Quick Allow:</span>
+            <form action="/firewall/rule/add" method="POST" class="d-inline">
+                <input type="hidden" name="port" value="22">
+                <input type="hidden" name="proto" value="tcp">
+                <input type="hidden" name="action" value="allow">
+                <input type="hidden" name="comment" value="SSH Access">
+                <button type="submit" class="btn btn-sm btn-outline-secondary py-1 text-xs">
+                    + SSH (22/tcp)
+                </button>
+            </form>
+            <form action="/firewall/rule/add" method="POST" class="d-inline">
+                <input type="hidden" name="port" value="80">
+                <input type="hidden" name="proto" value="tcp">
+                <input type="hidden" name="action" value="allow">
+                <input type="hidden" name="comment" value="HTTP Web Traffic">
+                <button type="submit" class="btn btn-sm btn-outline-secondary py-1 text-xs">
+                    + HTTP (80/tcp)
+                </button>
+            </form>
+            <form action="/firewall/rule/add" method="POST" class="d-inline">
+                <input type="hidden" name="port" value="443">
+                <input type="hidden" name="proto" value="tcp">
+                <input type="hidden" name="action" value="allow">
+                <input type="hidden" name="comment" value="HTTPS SSL Traffic">
+                <button type="submit" class="btn btn-sm btn-outline-secondary py-1 text-xs">
+                    + HTTPS (443/tcp)
+                </button>
+            </form>
+            <form action="/firewall/rule/add" method="POST" class="d-inline">
+                <input type="hidden" name="port" value="{{ panel_port }}">
+                <input type="hidden" name="proto" value="tcp">
+                <input type="hidden" name="action" value="allow">
+                <input type="hidden" name="comment" value="pyx-panel Management">
+                <button type="submit" class="btn btn-sm btn-outline-secondary py-1 text-xs">
+                    + Panel ({{ panel_port }}/tcp)
+                </button>
+            </form>
 
-        <span class="text-slate-600 mx-1">|</span>
-        <span class="text-slate-400 font-semibold mr-1">Quick Deny:</span>
-        <form action="/firewall/rule/add" method="POST" class="inline">
-            <input type="hidden" name="port" value="8080">
-            <input type="hidden" name="proto" value="tcp">
-            <input type="hidden" name="action" value="deny">
-            <input type="hidden" name="comment" value="Block Direct App Access">
-            <button type="submit" class="px-2.5 py-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 transition">
-                🚫 Block Port 8080/tcp
-            </button>
-        </form>
+            <span class="text-muted mx-1">|</span>
+            <span class="text-muted fw-bold me-1">Quick Deny:</span>
+            <form action="/firewall/rule/add" method="POST" class="d-inline">
+                <input type="hidden" name="port" value="8080">
+                <input type="hidden" name="proto" value="tcp">
+                <input type="hidden" name="action" value="deny">
+                <input type="hidden" name="comment" value="Block Direct App Access">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-1 text-xs">
+                    <i class="fa-solid fa-ban me-1"></i> Block Port 8080/tcp
+                </button>
+            </form>
+        </div>
     </div>
 
-    <!-- Firewall Rules Table -->
-    <div class="mt-6 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <h3 class="text-sm font-bold text-white uppercase tracking-wider text-slate-400">Active Firewall Rules</h3>
+    <!-- Active Firewall Rules Table Card -->
+    <div class="card shadow-sm overflow-hidden">
+        <div class="card-header d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-xs fw-bold text-uppercase text-muted tracking-wider">Active Firewall Rules</span>
                 {% if cf_shield_active %}
                 <button @click="showCloudflareRules = !showCloudflareRules"
-                        class="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition">
+                        class="btn btn-sm btn-outline-warning py-0 px-2 text-xs">
                     <span x-text="showCloudflareRules ? 'Hide Cloudflare CIDRs' : 'Show All Cloudflare CIDRs'"></span>
                 </button>
                 {% endif %}
             </div>
-            <span class="text-xs text-slate-500">Numbered by UFW evaluation precedence</span>
+            <span class="text-xs text-muted">Numbered by UFW evaluation precedence</span>
         </div>
 
-        <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
-            <thead class="bg-slate-800/50 text-slate-400 font-semibold uppercase text-[11px] tracking-wider">
-                <tr>
-                    <th class="px-6 py-3.5 w-16">#</th>
-                    <th class="px-6 py-3.5">Port / Target</th>
-                    <th class="px-6 py-3.5">Protocol</th>
-                    <th class="px-6 py-3.5">Action</th>
-                    <th class="px-6 py-3.5">From</th>
-                    <th class="px-6 py-3.5">Comment</th>
-                    <th class="px-6 py-3.5 text-right">Delete</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-800">
-                {% for rule in fw_status.rules %}
-                {% set is_cf = 'cloudflare' in rule.comment.lower() or 'cloudflare' in rule.from_src.lower() %}
-                <tr class="hover:bg-slate-800/30 transition {% if is_cf %}bg-slate-900/40{% endif %}"
-                    {% if is_cf %}x-show="showCloudflareRules"{% endif %}>
-                    <td class="px-6 py-3.5 font-mono text-xs text-slate-500">
-                        [{{ rule.index }}]
-                    </td>
-                    <td class="px-6 py-3.5">
-                        <span class="font-mono font-semibold text-white">{{ rule.to }}</span>
-                    </td>
-                    <td class="px-6 py-3.5">
-                        <span class="uppercase text-xs font-mono text-slate-400">{{ rule.proto }}</span>
-                    </td>
-                    <td class="px-6 py-3.5">
-                        {% if 'ALLOW' in rule.action %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            {{ rule.action }}
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                            {{ rule.action }}
-                        </span>
-                        {% endif %}
-                    </td>
-                    <td class="px-6 py-3.5 text-xs font-mono text-slate-300 truncate max-w-xs" title="{{ rule.from_src }}">
-                        {{ rule.from_src }}
-                    </td>
-                    <td class="px-6 py-3.5 text-xs text-slate-400">
-                        {{ rule.comment or "—" }}
-                    </td>
-                    <td class="px-6 py-3.5 text-right">
-                        <form action="/firewall/rule/{{ rule.index }}/delete" method="POST" class="inline"
-                              onsubmit="return confirm('Delete rule #{{ rule.index }} ({{ rule.to }})?');">
-                            <button type="submit"
-                                    class="inline-flex items-center px-2.5 py-1 rounded bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-medium border border-rose-500/20 transition">
-                                Delete
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="7" class="px-6 py-8 text-center text-slate-500">
-                        {% if not fw_status.active %}
-                        Firewall is currently <b>inactive</b>. Enable UFW or apply the Security Baseline above to activate port filtering.
-                        {% else %}
-                        No specific port rules configured. All traffic follows the default policy ({{ fw_status.default_incoming }}).
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="table-responsive mb-0">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width: 50px;">#</th>
+                        <th>Port / Target</th>
+                        <th>Protocol</th>
+                        <th>Action</th>
+                        <th>From</th>
+                        <th>Comment</th>
+                        <th class="text-end pe-3">Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rule in fw_status.rules %}
+                    {% set is_cf = 'cloudflare' in rule.comment.lower() or 'cloudflare' in rule.from_src.lower() %}
+                    <tr {% if is_cf %}x-show="showCloudflareRules" class="bg-light"{% endif %}>
+                        <td class="ps-3 font-monospace text-xs text-muted">[{{ rule.index }}]</td>
+                        <td><span class="font-monospace fw-semibold text-dark">{{ rule.to }}</span></td>
+                        <td><span class="badge badge-subtle-secondary font-monospace text-xs text-uppercase">{{ rule.proto }}</span></td>
+                        <td>
+                            {% if 'ALLOW' in rule.action %}
+                            <span class="badge badge-subtle-success text-xs">{{ rule.action }}</span>
+                            {% else %}
+                            <span class="badge badge-subtle-danger text-xs">{{ rule.action }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="font-monospace text-xs text-muted text-truncate" style="max-width: 200px;" title="{{ rule.from_src }}">
+                            {{ rule.from_src }}
+                        </td>
+                        <td class="text-xs text-muted">{{ rule.comment or "—" }}</td>
+                        <td class="text-end pe-3">
+                            <form action="/firewall/rule/{{ rule.index }}/delete" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Delete rule #{{ rule.index }} ({{ rule.to }})?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2 text-xs">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="py-5 text-center text-muted">
+                            <i class="fa-solid fa-shield-halved fs-2 text-muted mb-2 d-block"></i>
+                            {% if not fw_status.active %}
+                            Firewall is currently <b>inactive</b>. Enable UFW or apply the Security Baseline above to activate port filtering.
+                            {% else %}
+                            No specific port rules configured. All traffic follows the default policy ({{ fw_status.default_incoming }}).
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- Enable Cloudflare Shield Modal -->
     <div x-show="showCloudflareModal" x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl"
+         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+         style="background: rgba(15, 23, 42, 0.6); z-index: 1050; backdrop-filter: blur(4px);">
+        <div class="card shadow-lg border-0" style="max-width: 520px; width: 100%; border-radius: 1rem;"
              @click.away="showCloudflareModal = false">
-            <div class="flex items-center space-x-3 text-amber-400 mb-4">
-                <div class="p-2 bg-amber-500/10 rounded-lg">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                </div>
-                <h3 class="text-lg font-bold text-white">Enable Cloudflare-Only Web Shield</h3>
+            <div class="card-header d-flex align-items-center justify-content-between p-3 border-bottom">
+                <h5 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-cloud-bolt text-warning"></i> Enable Cloudflare-Only Web Shield
+                </h5>
+                <button @click="showCloudflareModal = false" type="button" class="btn-close" aria-label="Close"></button>
             </div>
 
-            <p class="text-sm text-slate-300 mb-4 leading-relaxed">
-                This will query official Cloudflare IPv4 & IPv6 CIDRs, add UFW rules to allow ports 80 & 443 <b>strictly from Cloudflare</b>, and delete public allow rules for 80/443.
-            </p>
+            <form action="/firewall/preset/cloudflare-shield" method="POST" class="card-body p-4 d-flex flex-column gap-3">
+                <p class="text-muted text-xs mb-0">
+                    This will query official Cloudflare IPv4 & IPv6 CIDRs, add UFW rules to allow ports 80 & 443 <b>strictly from Cloudflare</b>, and delete public allow rules for 80/443.
+                </p>
 
-            <form action="/firewall/preset/cloudflare-shield" method="POST" class="space-y-4">
-                <div class="p-3.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-3">
-                    <label class="block text-xs font-semibold text-slate-200">
+                <div class="p-3 bg-light rounded border">
+                    <label class="form-label text-xs fw-semibold text-dark mb-1">
                         Block Direct Access to Backend Application Port:
                     </label>
-                    <input type="text" name="block_app_port" value="8080" placeholder="8080"
-                           class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
-                    <span class="text-[11px] text-slate-400 block">
-                        Adds a <code class="text-rose-400 font-mono">DENY 8080/tcp</code> rule to prevent port scanners from accessing your Go app directly. Leave empty if not applicable.
+                    <input type="text" name="block_app_port" value="8080" placeholder="8080" class="form-control font-monospace">
+                    <span class="text-xs text-muted mt-1 d-block">
+                        Adds a <code class="text-danger font-monospace">DENY 8080/tcp</code> rule to prevent port scanners from accessing your Go app directly. Leave empty if not applicable.
                     </span>
                 </div>
 
-                <div class="p-3 bg-amber-500/10 rounded-xl border border-amber-500/30 text-xs text-amber-300">
-                    ⚠️ <b>Important:</b> Ensure your DNS record in Cloudflare has <b>Proxy status: Proxied (Orange Cloud)</b> enabled before confirming.
+                <div class="alert alert-warning py-2 px-3 text-xs mb-0">
+                    <i class="fa-solid fa-triangle-exclamation me-1"></i> Ensure your DNS record in Cloudflare has <b>Proxy status: Proxied (Orange Cloud)</b> enabled before confirming.
                 </div>
 
-                <div class="flex justify-end space-x-3 pt-2">
-                    <button type="button" @click="showCloudflareModal = false" class="px-4 py-2 rounded-lg text-sm bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</button>
-                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30">
-                        Apply Cloudflare Shield
-                    </button>
+                <div class="d-flex justify-content-end gap-2 pt-2 border-top">
+                    <button type="button" @click="showCloudflareModal = false" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-warning text-dark fw-semibold">Apply Cloudflare Shield</button>
                 </div>
             </form>
         </div>
@@ -384,50 +371,50 @@
 
     <!-- Add Custom Port Rule Modal -->
     <div x-show="showAddModal" x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl"
+         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+         style="background: rgba(15, 23, 42, 0.6); z-index: 1050; backdrop-filter: blur(4px);">
+        <div class="card shadow-lg border-0" style="max-width: 480px; width: 100%; border-radius: 1rem;"
              @click.away="showAddModal = false">
-            <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
-                <h3 class="text-lg font-bold text-white">Add Firewall Port Rule</h3>
-                <button @click="showAddModal = false" class="text-slate-400 hover:text-white text-lg">&times;</button>
+            <div class="card-header d-flex align-items-center justify-content-between p-3 border-bottom">
+                <h5 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-plus-circle text-primary"></i> Add Firewall Port Rule
+                </h5>
+                <button @click="showAddModal = false" type="button" class="btn-close" aria-label="Close"></button>
             </div>
 
-            <form action="/firewall/rule/add" method="POST" class="space-y-4">
+            <form action="/firewall/rule/add" method="POST" class="card-body p-4 d-flex flex-column gap-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Port / Port Range / Service</label>
-                    <input type="text" name="port" required placeholder="8080 (or 8000:8010 or ssh)"
-                           class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    <span class="text-[11px] text-slate-500">Single port (e.g. 8080), range (8000:8010), or service name</span>
+                    <label class="form-label text-xs fw-semibold text-uppercase text-muted">Port / Port Range / Service</label>
+                    <input type="text" name="port" required placeholder="8080 (or 8000:8010 or ssh)" class="form-control font-monospace">
+                    <span class="text-xs text-muted">Single port (e.g. 8080), range (8000:8010), or service name</span>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-300 mb-1">Protocol</label>
-                        <select name="proto" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label text-xs fw-semibold text-uppercase text-muted">Protocol</label>
+                        <select name="proto" class="form-select">
                             <option value="tcp" selected>TCP</option>
                             <option value="udp">UDP</option>
                             <option value="any">Any (TCP + UDP)</option>
                         </select>
                     </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-300 mb-1">Action</label>
-                        <select name="action" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none">
-                            <option value="allow" selected>ALLOW (Permit traffic)</option>
-                            <option value="deny">DENY (Block traffic)</option>
+                    <div class="col-6">
+                        <label class="form-label text-xs fw-semibold text-uppercase text-muted">Action</label>
+                        <select name="action" class="form-select">
+                            <option value="allow" selected>ALLOW</option>
+                            <option value="deny">DENY</option>
                         </select>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Comment / Label (optional)</label>
-                    <input type="text" name="comment" placeholder="e.g. My Go Server API"
-                           class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <label class="form-label text-xs fw-semibold text-uppercase text-muted">Comment / Label (optional)</label>
+                    <input type="text" name="comment" placeholder="e.g. My Go Server API" class="form-control">
                 </div>
 
-                <div class="flex justify-end space-x-3 pt-6 border-t border-slate-800">
-                    <button type="button" @click="showAddModal = false" class="px-4 py-2 rounded-lg text-sm bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</button>
-                    <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30">Add Rule</button>
+                <div class="d-flex justify-content-end gap-2 pt-3 border-top">
+                    <button type="button" @click="showAddModal = false" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Rule</button>
                 </div>
             </form>
         </div>
@@ -435,32 +422,33 @@
 
     <!-- Enable Firewall Anti-Lockout Modal -->
     <div x-show="showToggleModal" x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl"
+         class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+         style="background: rgba(15, 23, 42, 0.6); z-index: 1050; backdrop-filter: blur(4px);">
+        <div class="card shadow-lg border-0" style="max-width: 480px; width: 100%; border-radius: 1rem;"
              @click.away="showToggleModal = false">
-            <div class="flex items-center space-x-3 text-amber-400 mb-4">
-                <div class="p-2 bg-amber-500/10 rounded-lg">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                </div>
-                <h3 class="text-lg font-bold text-white">Enable UFW Firewall</h3>
+            <div class="card-header d-flex align-items-center justify-content-between p-3 border-bottom">
+                <h5 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-success"></i> Enable UFW Firewall
+                </h5>
+                <button @click="showToggleModal = false" type="button" class="btn-close" aria-label="Close"></button>
             </div>
-            <p class="text-sm text-slate-300 mb-4">
-                Activating the firewall will block incoming connections that are not explicitly permitted.
-            </p>
-            <form action="/firewall/toggle" method="POST" class="space-y-4">
+
+            <form action="/firewall/toggle" method="POST" class="card-body p-4 d-flex flex-column gap-3">
                 <input type="hidden" name="enable" value="true">
-                <div class="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-                    <label class="flex items-start space-x-2.5 text-xs text-slate-300 cursor-pointer">
-                        <input type="checkbox" name="auto_allow_ssh" value="true" checked
-                               class="rounded bg-slate-900 border-slate-600 text-blue-600 focus:ring-blue-500 mt-0.5">
-                        <span><b>Anti-Lockout Safeguard:</b> Automatically ensure SSH (port 22) and pyx-panel (port {{ panel_port }}) are allowed so your sessions remain connected.</span>
-                    </label>
+                <p class="text-muted text-xs mb-0">
+                    Activating the firewall will block incoming connections that are not explicitly permitted.
+                </p>
+                <div class="p-3 bg-light rounded border">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="auto_allow_ssh" value="true" checked id="checkAntiLock">
+                        <label class="form-check-label text-xs text-dark" for="checkAntiLock">
+                            <b>Anti-Lockout Safeguard:</b> Automatically ensure SSH (port 22) and pyx-panel (port {{ panel_port }}) are allowed so your sessions remain connected.
+                        </label>
+                    </div>
                 </div>
-                <div class="flex justify-end space-x-3 pt-2">
-                    <button type="button" @click="showToggleModal = false" class="px-4 py-2 rounded-lg text-sm bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</button>
-                    <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30">
-                        Confirm & Enable
-                    </button>
+                <div class="d-flex justify-content-end gap-2 pt-2 border-top">
+                    <button type="button" @click="showToggleModal = false" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-success text-white">Confirm & Enable</button>
                 </div>
             </form>
         </div>
