@@ -13,11 +13,26 @@ def client():
 
 @pytest.fixture
 def auth_client():
+    from pyx_panel.services.nginx_manager import nginx_manager
+    for d in (nginx_manager.available_dir, nginx_manager.enabled_dir):
+        p = d / "default-deny.conf"
+        if nginx_manager.driver.file_exists(p):
+            nginx_manager.driver.delete_file(p)
+    if nginx_manager.is_security_guard_active():
+        nginx_manager.driver.delete_file(nginx_manager.conf_d_dir / "pyx-security-guard.conf")
+
     c = TestClient(app)
     token = settings.get_token()
     cookie_val = create_session_token(token)
     c.cookies.set(COOKIE_NAME, cookie_val)
-    return c
+    yield c
+
+    for d in (nginx_manager.available_dir, nginx_manager.enabled_dir):
+        p = d / "default-deny.conf"
+        if nginx_manager.driver.file_exists(p):
+            nginx_manager.driver.delete_file(p)
+    if nginx_manager.is_security_guard_active():
+        nginx_manager.driver.delete_file(nginx_manager.conf_d_dir / "pyx-security-guard.conf")
 
 
 def test_unauthenticated_redirect(client):
@@ -238,4 +253,56 @@ def test_packages_flow(auth_client):
     assert res_stream.status_code == 200
     assert "text/event-stream" in res_stream.headers["content-type"]
     assert "data:" in res_stream.text
+
+
+def test_security_center_flow(auth_client):
+    # 1. View security overview page
+    res = auth_client.get("/security")
+    assert res.status_code == 200
+    assert "VPS Security Center" in res.text
+    assert "Security Audit Findings" in res.text
+    assert "Listening Sockets & Exposure Scanner" in res.text
+    assert "SSH Brute-Force Defense" in res.text
+
+    # 2. Re-run audit
+    res_audit = auth_client.post("/security/audit/run", follow_redirects=True)
+    assert res_audit.status_code == 200
+    assert "Security audit refreshed" in res_audit.text
+
+    # 3. Toggle Nginx Security Guard
+    res_guard = auth_client.post("/security/nginx-guard/toggle", follow_redirects=True)
+    assert res_guard.status_code == 200
+    assert "Nginx Global Security Guard" in res_guard.text
+
+    # 4. Toggle Direct IP Drop
+    res_drop = auth_client.post("/security/direct-ip-drop/toggle", follow_redirects=True)
+    assert res_drop.status_code == 200
+
+    # 5. Kernel Sysctl Hardening
+    res_kernel = auth_client.post("/security/kernel/harden", follow_redirects=True)
+    assert res_kernel.status_code == 200
+    assert "parameters applied" in res_kernel.text.lower()
+
+    # 6. Isolate Port with UFW
+    res_iso = auth_client.post(
+        "/security/ports/isolate",
+        data={"port": "8080", "proto": "tcp"},
+        follow_redirects=True,
+    )
+    assert res_iso.status_code == 200
+    assert "isolated" in res_iso.text
+
+    # 7. SSH Hardening (keys only & root)
+    res_ssh = auth_client.post(
+        "/security/ssh/harden",
+        data={"mode": "full"},
+        follow_redirects=True,
+    )
+    assert res_ssh.status_code == 200
+
+    # 8. 1-Click Harden All
+    res_all = auth_client.post("/security/harden-all", follow_redirects=True)
+    assert res_all.status_code == 200
+    assert "All security hardening modules applied successfully" in res_all.text
+
 

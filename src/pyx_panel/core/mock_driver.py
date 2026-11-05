@@ -16,11 +16,13 @@ class MockSystemDriver:
         self.base_dir = Path(base_dir)
         self.sites_available = self.base_dir / "nginx" / "sites-available"
         self.sites_enabled = self.base_dir / "nginx" / "sites-enabled"
+        self.conf_d = self.base_dir / "nginx" / "conf.d"
         self.systemd_dir = self.base_dir / "systemd" / "system"
         
         # Ensure directories exist
         self.sites_available.mkdir(parents=True, exist_ok=True)
         self.sites_enabled.mkdir(parents=True, exist_ok=True)
+        self.conf_d.mkdir(parents=True, exist_ok=True)
         self.systemd_dir.mkdir(parents=True, exist_ok=True)
 
         # Mock runtime state
@@ -55,6 +57,25 @@ class MockSystemDriver:
             "uv": "0.4.29",
             "systemd": "255.4-1ubuntu8",
         }
+        self.mock_listening_ports: list[dict] = [
+            {"proto": "tcp", "host": "0.0.0.0", "port": "22", "is_loopback": False, "is_public": True, "process": "sshd"},
+            {"proto": "tcp", "host": "0.0.0.0", "port": "80", "is_loopback": False, "is_public": True, "process": "nginx"},
+            {"proto": "tcp", "host": "0.0.0.0", "port": "443", "is_loopback": False, "is_public": True, "process": "nginx"},
+            {"proto": "tcp", "host": "127.0.0.1", "port": "8080", "is_loopback": True, "is_public": False, "process": "go-server"},
+            {"proto": "tcp", "host": "0.0.0.0", "port": "8000", "is_loopback": False, "is_public": True, "process": "pyx-panel"},
+        ]
+        self.mock_ssh_config: dict = {
+            "port": 22,
+            "password_authentication": True,
+            "permit_root_login": "prohibit-password",
+        }
+        self.mock_has_authorized_keys: bool = True
+        self.mock_sysctl: dict[str, str] = {
+            "net.ipv4.tcp_syncookies": "1",
+            "net.ipv4.icmp_echo_ignore_broadcasts": "1",
+            "net.ipv4.conf.all.rp_filter": "1",
+            "net.ipv4.conf.all.accept_source_route": "0",
+        }
 
     async def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         return 0, f"Mock executed: {' '.join(cmd)}", ""
@@ -73,6 +94,11 @@ class MockSystemDriver:
                     default_servers.append(conf_file.name)
         if len(default_servers) > 1:
             return False, f"nginx: [emerg] 20428#20428: a duplicate default server for 0.0.0.0:80 in {default_servers[-1]}"
+        for conf_file in self.conf_d.iterdir():
+            if conf_file.is_file():
+                content = conf_file.read_text(encoding="utf-8")
+                if content.count("{") != content.count("}"):
+                    return False, f"nginx: [emerg] unexpected '}}' or '{{' in conf.d/{conf_file.name}"
         return True, "nginx: configuration file test is successful"
 
     async def reload_nginx(self) -> tuple[bool, str]:
@@ -362,3 +388,24 @@ class MockSystemDriver:
             await asyncio.sleep(0.01)
             yield f"[pyx-mock] \u2705 {pkg} installed successfully."
         yield "[pyx-mock] All requested packages are installed and configured."
+
+    async def get_listening_ports(self) -> list[dict]:
+        return list(self.mock_listening_ports)
+
+    async def read_ssh_config(self) -> dict:
+        return dict(self.mock_ssh_config)
+
+    async def has_ssh_authorized_keys(self) -> bool:
+        return self.mock_has_authorized_keys
+
+    async def write_ssh_hardening(self, disable_password_auth: bool, disable_root_login: bool) -> tuple[bool, str]:
+        self.mock_ssh_config["password_authentication"] = not disable_password_auth
+        self.mock_ssh_config["permit_root_login"] = "prohibit-password" if disable_root_login else "yes"
+        return True, "Mock SSH configuration hardened successfully"
+
+    async def apply_sysctl_settings(self, settings_dict: dict[str, str]) -> tuple[bool, str]:
+        self.mock_sysctl.update(settings_dict)
+        return True, f"Mock kernel network security parameters applied ({len(settings_dict)} settings)"
+
+    async def read_sysctl_setting(self, key: str) -> str:
+        return self.mock_sysctl.get(key, "1")

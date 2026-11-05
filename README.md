@@ -50,6 +50,14 @@ Unlike traditional heavy control panels that run permanently as exposed backgrou
   - **Anti-Lockout Protection**: Prevents enabling UFW unless SSH (22/tcp) and panel port access are preserved.
   - **Auto Ephemeral Panel Port**: Automatically allows the panel port (e.g. `8000/tcp`) in UFW on startup and deletes/closes the rule when the server stops (on Ctrl+C, UI shutdown, or watchdog timeout), leaving zero management ports exposed when stopped.
   - **1-Click Web Security Baseline**: Instantly sets default deny incoming, opens SSH (22), HTTP (80), HTTPS (443), and the panel port, and activates UFW.
+- 🛡️ **VPS Security Center & Threat Defense (`/security`)**:
+  - **Automated Vulnerability Audit & Score**: Scans 9 host defense layers and calculates an audit score (0–100%) and letter grade (A+ through F) covering SSH, firewall, Nginx, network sysctl, and open sockets.
+  - **Listening Sockets Exposure Scanner (`ss -lntp`)**: Live discovery of bound TCP sockets, identifying internal backend apps (e.g. `8080`) or databases listening insecurely on `0.0.0.0` with 1-click UFW port isolation.
+  - **SSH Hardening with Anti-Lockout Guard**: Enforces SSH keys only (`PasswordAuthentication no`) and restricts direct root login. Checks for existing `/root/.ssh/authorized_keys` before applying to strictly prevent administrator lockout.
+  - **Nginx Global Security Guard (`conf.d`)**: Automatically hides version signatures (`server_tokens off`), configures rate-limiting request zones (`limit_req_zone`), and sets Slowloris request timeouts (`client_body_timeout 15s`, `client_header_timeout 15s`).
+  - **Automated Dotfile & Sensitive File Defense**: Nginx site configs automatically deny access to hidden files (`.env`, `.git`) and sensitive extensions (`.sql`, `.log`, `.bak`, `.pem`, `.key`).
+  - **Linux Kernel Network Hardening (`sysctl`)**: Applies SYN flood protection (`net.ipv4.tcp_syncookies = 1`), Reverse Path Filtering anti-spoofing (`rp_filter`), and disables ICMP source routing.
+  - **1-Click Hardening Suite**: Instantly executes all baseline firewall, Nginx guard, direct IP drop, kernel sysctl, and SSH protections in a single coordinated action.
 - 📦 **System Packages & Prerequisites (`/packages`)**:
   - **Live Dependency Inspection**: Checks installation states and version numbers for `nginx`, `ufw`, `certbot`, `python3-certbot-nginx`, `curl`, `git`, `uv`, and `systemd`.
   - **1-Click Install All Missing**: Automatically executes non-interactive `apt-get` and `astral.sh` installers for missing tools.

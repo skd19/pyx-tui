@@ -124,3 +124,27 @@ class SystemDriver(Protocol):
     async def install_system_packages(self, packages: list[str]) -> AsyncIterator[str]:
         """Installs packages via system package manager, yielding output lines in real time."""
         ...
+
+    async def get_listening_ports(self) -> list[dict]:
+        """Audits active listening TCP/UDP sockets on the host (e.g. ss -lntp)."""
+        ...
+
+    async def read_ssh_config(self) -> dict:
+        """Inspects SSH daemon configuration (port, password auth, root login)."""
+        ...
+
+    async def has_ssh_authorized_keys(self) -> bool:
+        """Verifies if authorized keys exist to prevent SSH lockout when disabling passwords."""
+        ...
+
+    async def write_ssh_hardening(self, disable_password_auth: bool, disable_root_login: bool) -> tuple[bool, str]:
+        """Safely applies SSH hardening rules and reloads sshd with syntax pre-check."""
+        ...
+
+    async def apply_sysctl_settings(self, settings_dict: dict[str, str]) -> tuple[bool, str]:
+        """Applies Linux kernel network parameters via /etc/sysctl.d/99-pyx-security.conf."""
+        ...
+
+    async def read_sysctl_setting(self, key: str) -> str:
+        """Reads a live kernel sysctl value (e.g. net.ipv4.tcp_syncookies)."""
+        ...

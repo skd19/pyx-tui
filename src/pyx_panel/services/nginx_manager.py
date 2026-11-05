@@ -45,6 +45,7 @@ class NginxManager:
         self.driver = get_driver()
         self.available_dir = settings.nginx_sites_available
         self.enabled_dir = settings.nginx_sites_enabled
+        self.conf_d_dir = settings.nginx_conf_d
 
     def _sanitize_name(self, name: str) -> str:
         """Sanitizes site name to a safe filename."""
@@ -167,6 +168,24 @@ class NginxManager:
 
     client_max_body_size {form.client_max_body_size};
 
+    # Security: Block hidden files (.env, .git, etc.)
+    location ~ /\\.(?!well-known) {{
+        deny all;
+        return 404;
+    }}
+
+    # Security: Block sensitive extensions
+    location ~* \\.(env|git|bak|sql|log|yml|yaml|ini|conf|sh|key|pem|crt)$ {{
+        deny all;
+        return 404;
+    }}
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
     location / {{
         proxy_pass {upstream};
 {websocket_block}
@@ -194,6 +213,24 @@ class NginxManager:
 
     root {root};
     index index.html index.htm;
+
+    # Security: Block hidden files (.env, .git, etc.)
+    location ~ /\\.(?!well-known) {{
+        deny all;
+        return 404;
+    }}
+
+    # Security: Block sensitive extensions
+    location ~* \\.(env|git|bak|sql|log|yml|yaml|ini|conf|sh|key|pem|crt)$ {{
+        deny all;
+        return 404;
+    }}
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     location / {{
         {try_files}
@@ -413,6 +450,62 @@ server {
     async def disable_default_deny(self) -> tuple[bool, str]:
         """Disables the direct IP reject catch-all."""
         return await self.disable_site("default-deny")
+
+    def is_security_guard_active(self) -> bool:
+        """Checks if the global security guard configuration is currently active in conf.d."""
+        return self.driver.file_exists(self.conf_d_dir / "pyx-security-guard.conf")
+
+    async def apply_security_guard(self) -> tuple[bool, str]:
+        """
+        Creates and activates global security guard config in /etc/nginx/conf.d/pyx-security-guard.conf.
+        Hides nginx server tokens, sets Slowloris client timeouts, and configures rate-limiting zones.
+        """
+        guard_content = """# Pyx Panel Global Security Hardening Guard
+# Generated automatically by Pyx Panel Security Center
+
+# 1. Hide Nginx Version Signature
+server_tokens off;
+
+# 2. Rate Limiting Zones (DDoS, Slowloris, Brute Force protection)
+limit_req_zone $binary_remote_addr zone=pyx_general_limit:10m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=pyx_login_limit:10m rate=5r/m;
+limit_conn_zone $binary_remote_addr zone=pyx_addr_conn:10m;
+
+# 3. Connection & Request Timeouts (Mitigates Slowloris & idle socket starvation)
+client_body_timeout 15s;
+client_header_timeout 15s;
+keepalive_timeout 30s;
+send_timeout 15s;
+"""
+        target_path = self.conf_d_dir / "pyx-security-guard.conf"
+        old_content = self.driver.read_file(target_path) if self.driver.file_exists(target_path) else None
+
+        self.driver.write_file(target_path, guard_content)
+
+        is_valid, msg = await self.driver.test_nginx()
+        if not is_valid:
+            if old_content is not None:
+                self.driver.write_file(target_path, old_content)
+            else:
+                self.driver.delete_file(target_path)
+            return False, f"Nginx validation failed with security guard: {msg}"
+
+        await self.driver.reload_nginx()
+        return True, "Nginx Global Security Guard applied successfully"
+
+    async def revert_security_guard(self) -> tuple[bool, str]:
+        """Removes global security guard config from conf.d and reloads Nginx."""
+        target_path = self.conf_d_dir / "pyx-security-guard.conf"
+        if not self.driver.file_exists(target_path):
+            return True, "Nginx Security Guard is not currently active"
+
+        self.driver.delete_file(target_path)
+        is_valid, msg = await self.driver.test_nginx()
+        if not is_valid:
+            return False, f"Nginx validation failed after reverting security guard: {msg}"
+
+        await self.driver.reload_nginx()
+        return True, "Nginx Global Security Guard disabled"
 
 
 nginx_manager = NginxManager()

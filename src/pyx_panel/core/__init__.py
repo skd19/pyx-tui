@@ -16,6 +16,7 @@ def get_driver() -> SystemDriver:
         mock = MockSystemDriver(base_dir=settings.mock_dir)
         settings.nginx_sites_available = mock.sites_available
         settings.nginx_sites_enabled = mock.sites_enabled
+        settings.nginx_conf_d = mock.conf_d
         settings.systemd_system_dir = mock.systemd_dir
         return mock
     return LinuxSystemDriver()

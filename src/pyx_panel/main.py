@@ -15,6 +15,7 @@ from pyx_panel.web.routes import (
     firewall,
     logs,
     packages,
+    security,
     services,
     sites,
     ssl,
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(logs.router)
     app.include_router(ssl.router)
     app.include_router(firewall.router)
+    app.include_router(security.router)
     app.include_router(packages.router)
     app.include_router(system.router)
 

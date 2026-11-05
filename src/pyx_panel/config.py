@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Filesystem Paths
     nginx_sites_available: Path = Path("/etc/nginx/sites-available")
     nginx_sites_enabled: Path = Path("/etc/nginx/sites-enabled")
+    nginx_conf_d: Path = Path("/etc/nginx/conf.d")
     systemd_system_dir: Path = Path("/etc/systemd/system")
     apps_dir: Path = Path("/opt/apps")
 
