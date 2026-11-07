@@ -49,6 +49,69 @@ def test_generate_static_config(manager):
     assert "try_files $uri $uri/ /index.html;" in conf
 
 
+def test_parse_domain_and_www_alias():
+    from pyx_panel.services.nginx_manager import parse_domain_and_www_alias
+    assert parse_domain_and_www_alias("example.com") == ("example.com", "www.example.com")
+    assert parse_domain_and_www_alias("www.example.com") == ("example.com", "www.example.com")
+    assert parse_domain_and_www_alias("localhost") == ("localhost", None)
+    assert parse_domain_and_www_alias("127.0.0.1") == ("127.0.0.1", None)
+    assert parse_domain_and_www_alias("my.sub.domain.com") == ("my.sub.domain.com", "www.my.sub.domain.com")
+
+
+def test_generate_reverse_proxy_with_www_as_main_domain(manager):
+    form = ReverseProxyForm(
+        name="go-api",
+        domains="example.com",
+        upstream="http://127.0.0.1:8080",
+        www_handling="redirect_to_www",
+    )
+    conf = manager.generate_reverse_proxy_config(form)
+    assert "server_name example.com;" in conf
+    assert "return 301 $scheme://www.example.com$request_uri;" in conf
+    assert "server_name www.example.com;" in conf
+    assert "proxy_pass http://127.0.0.1:8080;" in conf
+
+
+def test_generate_reverse_proxy_with_root_as_main_domain(manager):
+    form = ReverseProxyForm(
+        name="go-api",
+        domains="www.example.com",
+        upstream="http://127.0.0.1:8080",
+        www_handling="redirect_to_root",
+    )
+    conf = manager.generate_reverse_proxy_config(form)
+    assert "server_name www.example.com;" in conf
+    assert "return 301 $scheme://example.com$request_uri;" in conf
+    assert "server_name example.com;" in conf
+    assert "proxy_pass http://127.0.0.1:8080;" in conf
+
+
+def test_generate_reverse_proxy_with_both_domains(manager):
+    form = ReverseProxyForm(
+        name="go-api",
+        domains="example.com",
+        upstream="http://127.0.0.1:8080",
+        www_handling="both",
+    )
+    conf = manager.generate_reverse_proxy_config(form)
+    assert "return 301" not in conf
+    assert "server_name example.com www.example.com;" in conf
+
+
+def test_generate_static_with_www_as_main_domain(manager):
+    form = StaticSiteForm(
+        name="web-site",
+        domains="example.com",
+        root_path="/var/www/web",
+        www_handling="redirect_to_www",
+    )
+    conf = manager.generate_static_config(form)
+    assert "server_name example.com;" in conf
+    assert "return 301 $scheme://www.example.com$request_uri;" in conf
+    assert "server_name www.example.com;" in conf
+    assert "root /var/www/web;" in conf
+
+
 @pytest.mark.asyncio
 async def test_save_and_revert_invalid_syntax(manager):
     # Test valid syntax save

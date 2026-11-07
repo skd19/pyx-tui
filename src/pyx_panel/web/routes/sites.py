@@ -39,6 +39,7 @@ async def create_reverse_proxy(
     name: str = Form(...),
     domains: str = Form(...),
     upstream: str = Form(...),
+    www_handling: str = Form("none"),
     enable_websocket: bool = Form(False),
     client_max_body_size: str = Form("50M"),
     enable_immediately: bool = Form(True),
@@ -47,6 +48,7 @@ async def create_reverse_proxy(
         name=name,
         domains=domains,
         upstream=upstream,
+        www_handling=www_handling,
         enable_websocket=enable_websocket,
         client_max_body_size=client_max_body_size,
         enable_immediately=enable_immediately,
@@ -74,6 +76,7 @@ async def create_static_site(
     name: str = Form(...),
     domains: str = Form(...),
     root_path: str = Form(...),
+    www_handling: str = Form("none"),
     spa_fallback: bool = Form(True),
     enable_immediately: bool = Form(True),
 ):
@@ -81,6 +84,7 @@ async def create_static_site(
         name=name,
         domains=domains,
         root_path=root_path,
+        www_handling=www_handling,
         spa_fallback=spa_fallback,
         enable_immediately=enable_immediately,
     )

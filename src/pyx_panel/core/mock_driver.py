@@ -280,14 +280,24 @@ class MockSystemDriver:
             yield f"[{t}] INFO  [server] HTTP GET /api/v1/health status=200 duration=1.2ms (req #{counter})"
             counter += 1
 
-    async def run_certbot(self, domain: str, email: str = "") -> tuple[bool, str]:
-        await asyncio.sleep(1.0)
+    async def run_certbot(self, domain: str | list[str], email: str = "") -> tuple[bool, str]:
+        await asyncio.sleep(0.2)
+        if isinstance(domain, str):
+            domain_list = [d.strip() for d in re.split(r"[\s,]+", domain) if d.strip()]
+        else:
+            domain_list = [d.strip() for d in domain if d.strip()]
+
+        if not domain_list:
+            return False, "No valid domain specified for Certbot."
+
+        primary = domain_list[0]
         self.mock_certs.append({
-            "name": domain,
-            "domains": [domain],
+            "name": primary,
+            "domains": domain_list,
             "expiry": (datetime.datetime.now() + datetime.timedelta(days=90)).strftime("%Y-%m-%d"),
         })
-        return True, f"Successfully obtained certificate for {domain}\nCertificate is saved at: /etc/letsencrypt/live/{domain}/fullchain.pem"
+        domains_str = ", ".join(domain_list)
+        return True, f"Successfully obtained certificate for {domains_str}\nCertificate is saved at: /etc/letsencrypt/live/{primary}/fullchain.pem"
 
     async def list_certificates(self) -> list[dict]:
         return self.mock_certs

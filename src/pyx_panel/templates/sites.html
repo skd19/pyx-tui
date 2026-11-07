@@ -148,6 +148,17 @@
                     </div>
 
                     <div>
+                        <label class="form-label text-xs fw-semibold text-uppercase text-muted">Domain & WWW Handling</label>
+                        <select name="www_handling" class="form-select form-select-sm">
+                            <option value="none" selected>Exact domains only (no redirect)</option>
+                            <option value="redirect_to_www">WWW as main domain (redirect apex &rarr; www.domain.com)</option>
+                            <option value="redirect_to_root">Root as main domain (redirect www &rarr; domain.com)</option>
+                            <option value="both">Serve both directly (both in server_name, no redirect)</option>
+                        </select>
+                        <span class="text-xs text-muted">Automatically generates canonical 301 redirects or multi-domain aliases</span>
+                    </div>
+
+                    <div>
                         <label class="form-label text-xs fw-semibold text-uppercase text-muted">Upstream Target URL / Port</label>
                         <input type="text" name="upstream" required placeholder="http://127.0.0.1:8080" class="form-control">
                         <span class="text-xs text-muted">The local host and port your Go application listens on</span>
@@ -191,6 +202,17 @@
                             <label class="form-label text-xs fw-semibold text-uppercase text-muted">Domain Names</label>
                             <input type="text" name="domains" required placeholder="web.mydomain.com" class="form-control">
                         </div>
+                    </div>
+
+                    <div>
+                        <label class="form-label text-xs fw-semibold text-uppercase text-muted">Domain & WWW Handling</label>
+                        <select name="www_handling" class="form-select form-select-sm">
+                            <option value="none" selected>Exact domains only (no redirect)</option>
+                            <option value="redirect_to_www">WWW as main domain (redirect apex &rarr; www.domain.com)</option>
+                            <option value="redirect_to_root">Root as main domain (redirect www &rarr; domain.com)</option>
+                            <option value="both">Serve both directly (both in server_name, no redirect)</option>
+                        </select>
+                        <span class="text-xs text-muted">Automatically generates canonical 301 redirects or multi-domain aliases</span>
                     </div>
 
                     <div>

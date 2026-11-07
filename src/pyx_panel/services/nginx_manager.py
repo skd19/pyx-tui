@@ -19,11 +19,32 @@ class SiteSummary(BaseModel):
     content: str = ""
 
 
+def parse_domain_and_www_alias(domain: str) -> tuple[str, str | None]:
+    """
+    Given a domain, returns (apex_or_root_domain, www_domain).
+    If the domain cannot have a www alias (e.g. localhost, IP address),
+    returns (domain, None).
+    """
+    d = domain.strip().lower()
+    if not d or d == "_" or d == "localhost" or re.match(r"^\d{1,3}(\.\d{1,3}){3}$", d) or ":" in d:
+        return d, None
+
+    if d.startswith("www."):
+        root = d[4:]
+        return root, d
+    else:
+        parts = d.split(".")
+        if len(parts) >= 2:
+            return d, f"www.{d}"
+        return d, None
+
+
 class ReverseProxyForm(BaseModel):
     """Input form for generating an Nginx reverse proxy site."""
     name: str
     domains: str  # Space-separated or comma-separated
     upstream: str  # e.g. "http://127.0.0.1:8080"
+    www_handling: str = "none"  # "none", "redirect_to_www", "redirect_to_root", "both"
     enable_websocket: bool = True
     client_max_body_size: str = "50M"
     enable_immediately: bool = True
@@ -34,6 +55,7 @@ class StaticSiteForm(BaseModel):
     name: str
     domains: str
     root_path: str  # e.g. "/var/www/mysite"
+    www_handling: str = "none"  # "none", "redirect_to_www", "redirect_to_root", "both"
     spa_fallback: bool = True
     enable_immediately: bool = True
 
@@ -146,11 +168,60 @@ class NginxManager:
             content=content,
         )
 
+    def _resolve_site_domains(self, domains_input: str, www_handling: str) -> tuple[str, str]:
+        """
+        Resolves domain inputs and www handling options.
+        Returns: (main_domains_str, redirect_block_str)
+        """
+        raw_list = [d.strip() for d in re.split(r"[\s,]+", domains_input.strip()) if d.strip()]
+        if not raw_list:
+            return "_", ""
+
+        primary = raw_list[0]
+        root_dom, www_dom = parse_domain_and_www_alias(primary)
+
+        if not www_dom or not root_dom:
+            return " ".join(raw_list), ""
+
+        extra_domains = [d for d in raw_list[1:] if d != root_dom and d != www_dom]
+
+        if www_handling == "redirect_to_www":
+            # www is the main domain; root redirects to www
+            main_server_names = [www_dom] + extra_domains
+            redirect_block = f"""server {{
+    listen 80;
+    server_name {root_dom};
+    return 301 $scheme://{www_dom}$request_uri;
+}}
+
+"""
+            return " ".join(main_server_names), redirect_block
+
+        elif www_handling == "redirect_to_root":
+            # root is the main domain; www redirects to root
+            main_server_names = [root_dom] + extra_domains
+            redirect_block = f"""server {{
+    listen 80;
+    server_name {www_dom};
+    return 301 $scheme://{root_dom}$request_uri;
+}}
+
+"""
+            return " ".join(main_server_names), redirect_block
+
+        elif www_handling == "both":
+            # Both served on the same main block without redirect
+            names = [root_dom, www_dom] + extra_domains
+            if primary.startswith("www."):
+                names = [www_dom, root_dom] + extra_domains
+            return " ".join(names), ""
+
+        # Default: "none" - exact domains entered
+        return " ".join(raw_list), ""
+
     def generate_reverse_proxy_config(self, form: ReverseProxyForm) -> str:
         """Generates standard Nginx reverse proxy configuration."""
-        # Clean domain string
-        domain_list = re.split(r"[\s,]+", form.domains.strip())
-        domains_str = " ".join(d for d in domain_list if d) or "_"
+        domains_str, redirect_block = self._resolve_site_domains(form.domains, form.www_handling)
 
         upstream = form.upstream.strip()
         if not upstream.startswith("http://") and not upstream.startswith("https://"):
@@ -162,7 +233,7 @@ class NginxManager:
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";"""
 
-        config = f"""server {{
+        config = f"""{redirect_block}server {{
     listen 80;
     server_name {domains_str};
 
@@ -201,13 +272,12 @@ class NginxManager:
 
     def generate_static_config(self, form: StaticSiteForm) -> str:
         """Generates standard static website configuration."""
-        domain_list = re.split(r"[\s,]+", form.domains.strip())
-        domains_str = " ".join(d for d in domain_list if d) or "_"
+        domains_str, redirect_block = self._resolve_site_domains(form.domains, form.www_handling)
         root = form.root_path.strip()
 
         try_files = "try_files $uri $uri/ /index.html;" if form.spa_fallback else "try_files $uri $uri/ =404;"
 
-        config = f"""server {{
+        config = f"""{redirect_block}server {{
     listen 80;
     server_name {domains_str};
 

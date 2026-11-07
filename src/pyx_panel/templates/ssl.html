@@ -31,8 +31,14 @@
             <form action="/ssl/provision" method="POST" class="d-flex flex-column gap-3">
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
-                        <label class="form-label text-xs fw-semibold text-uppercase text-muted">Domain Name</label>
-                        <input type="text" name="domain" x-model="domain" required placeholder="api.mydomain.com" class="form-control">
+                        <label class="form-label text-xs fw-semibold text-uppercase text-muted">Domain Name(s)</label>
+                        <input type="text" name="domain" x-model="domain" required placeholder="api.mydomain.com or mydomain.com" class="form-control">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="include_www" value="true" id="checkIncludeWww" x-model="includeWww">
+                            <label class="form-check-label text-xs text-dark fw-semibold" for="checkIncludeWww">
+                                <i class="fa-solid fa-arrows-split-up-and-left text-primary me-1"></i> Include WWW / Apex alias (covers both <code>example.com</code> and <code>www.example.com</code>)
+                            </label>
+                        </div>
                         {% if available_domains %}
                         <div class="d-flex flex-wrap gap-1 mt-2 align-items-center">
                             <span class="text-xs text-muted me-1">Quick pick:</span>
@@ -130,6 +136,7 @@
     function sslManager() {
         return {
             domain: '',
+            includeWww: true,
             checkingDns: false,
             dnsStatus: false,
             dnsMatches: false,
@@ -142,6 +149,7 @@
                 try {
                     const formData = new FormData();
                     formData.append('domain', this.domain.trim());
+                    formData.append('include_www', this.includeWww);
                     const res = await fetch('/ssl/check-dns', {
                         method: 'POST',
                         body: formData,
@@ -150,7 +158,7 @@
                     this.dnsStatus = true;
                     this.dnsMatches = data.matches;
                     if (data.matches) {
-                        this.dnsMessage = `✅ Domain '${data.domain}' resolves to ${data.domain_ips.join(', ')} which matches VPS IP (${data.vps_ip}). Ready to issue!`;
+                        this.dnsMessage = `✅ Domain(s) '${data.domain}' resolve to ${data.domain_ips.join(', ')} matching VPS IP (${data.vps_ip}). Ready to issue!`;
                     } else if (data.error) {
                         this.dnsMessage = `❌ DNS Error: ${data.error}`;
                     } else {

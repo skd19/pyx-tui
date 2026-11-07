@@ -66,13 +66,14 @@ def test_sites_flow(auth_client):
     res = auth_client.get("/sites")
     assert res.status_code == 200
 
-    # 2. Create reverse proxy
+    # 2. Create reverse proxy with www_handling
     res_create = auth_client.post(
         "/sites/new/reverse-proxy",
         data={
             "name": "e2e-go-app",
-            "domains": "e2e.example.com",
+            "domains": "example.com",
             "upstream": "127.0.0.1:8080",
+            "www_handling": "redirect_to_www",
             "enable_websocket": "true",
             "client_max_body_size": "64M",
             "enable_immediately": "true",
@@ -82,10 +83,11 @@ def test_sites_flow(auth_client):
     assert res_create.status_code == 200
     assert "e2e-go-app" in res_create.text
 
-    # 3. View site editor
+    # 3. View site editor (should have redirect block to www)
     res_editor = auth_client.get("/sites/e2e-go-app")
     assert res_editor.status_code == 200
-    assert "e2e.example.com" in res_editor.text
+    assert "return 301 $scheme://www.example.com$request_uri;" in res_editor.text
+    assert "server_name www.example.com;" in res_editor.text
 
     # 4. Toggle site
     res_toggle = auth_client.post("/sites/e2e-go-app/toggle", follow_redirects=True)
@@ -138,17 +140,18 @@ def test_ssl_flow(auth_client):
     assert res.status_code == 200
     assert "SSL Certificates" in res.text
 
-    # 2. Check DNS API
-    res_dns = auth_client.post("/ssl/check-dns", data={"domain": "localhost"})
+    # 2. Check DNS API with include_www
+    res_dns = auth_client.post("/ssl/check-dns", data={"domain": "localhost", "include_www": "true"})
     assert res_dns.status_code == 200
     data = res_dns.json()
     assert data["domain"] == "localhost"
     assert "vps_ip" in data
+    assert "details" in data
 
-    # 3. Provision SSL
+    # 3. Provision SSL with include_www
     res_prov = auth_client.post(
         "/ssl/provision",
-        data={"domain": "localhost", "email": "admin@example.com", "force": "true"},
+        data={"domain": "localhost", "email": "admin@example.com", "force": "true", "include_www": "true"},
         follow_redirects=True,
     )
     assert res_prov.status_code == 200

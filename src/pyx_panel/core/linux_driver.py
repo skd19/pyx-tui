@@ -182,16 +182,25 @@ class LinuxSystemDriver:
             except Exception:
                 pass
 
-    async def run_certbot(self, domain: str, email: str = "") -> tuple[bool, str]:
+    async def run_certbot(self, domain: str | list[str], email: str = "") -> tuple[bool, str]:
+        if isinstance(domain, str):
+            domain_list = [d.strip() for d in re.split(r"[\s,]+", domain) if d.strip()]
+        else:
+            domain_list = [d.strip() for d in domain if d.strip()]
+
+        if not domain_list:
+            return False, "No valid domain specified for Certbot."
+
         cmd = [
             "certbot",
             "--nginx",
-            "-d",
-            domain,
             "--non-interactive",
             "--agree-tos",
             "--redirect",
         ]
+        for d in domain_list:
+            cmd.extend(["-d", d])
+
         if email.strip():
             cmd.extend(["-m", email.strip()])
         else:

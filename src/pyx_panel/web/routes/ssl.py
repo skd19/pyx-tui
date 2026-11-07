@@ -40,9 +40,9 @@ async def ssl_page(request: Request, msg: str = "", error: str = ""):
 
 
 @router.post("/check-dns")
-async def check_dns(domain: str = Form(...)):
+async def check_dns(domain: str = Form(...), include_www: bool = Form(False)):
     """API endpoint to pre-check domain DNS A record resolution."""
-    res = await certbot_manager.check_domain_dns(domain)
+    res = await certbot_manager.check_domain_dns(domain, include_www=include_www)
     return JSONResponse(
         {
             "domain": res.domain,
@@ -50,6 +50,7 @@ async def check_dns(domain: str = Form(...)):
             "domain_ips": res.domain_ips,
             "matches": res.matches,
             "error": res.error,
+            "details": res.details,
         }
     )
 
@@ -59,11 +60,13 @@ async def provision_ssl(
     domain: str = Form(...),
     email: str = Form(""),
     force: bool = Form(False),
+    include_www: bool = Form(False),
 ):
     success, msg = await certbot_manager.provision_certificate(
         domain=domain,
         email=email,
         force=force,
+        include_www=include_www,
     )
     if not success:
         return RedirectResponse(

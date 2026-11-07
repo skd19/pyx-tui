@@ -77,8 +77,8 @@ class SystemDriver(Protocol):
         """Yield real-time log lines from journalctl for a unit."""
         ...
 
-    async def run_certbot(self, domain: str, email: str = "") -> tuple[bool, str]:
-        """Run certbot for a domain."""
+    async def run_certbot(self, domain: str | list[str], email: str = "") -> tuple[bool, str]:
+        """Run certbot for one or more domains."""
         ...
 
     async def list_certificates(self) -> list[dict]:
