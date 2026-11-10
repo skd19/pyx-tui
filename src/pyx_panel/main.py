@@ -20,6 +20,8 @@ from pyx_panel.web.routes import (
     sites,
     ssl,
     system,
+    vpn,
+    wordpress,
 )
 from pyx_panel.services.ufw_manager import ufw_manager
 
@@ -83,10 +85,12 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(dashboard.router)
     app.include_router(sites.router)
+    app.include_router(wordpress.router)
     app.include_router(services.router)
     app.include_router(logs.router)
     app.include_router(ssl.router)
     app.include_router(firewall.router)
+    app.include_router(vpn.router)
     app.include_router(security.router)
     app.include_router(packages.router)
     app.include_router(system.router)

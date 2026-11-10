@@ -77,3 +77,17 @@ async def provision_ssl(
         url=f"/ssl?msg=Certificate successfully issued for {domain}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/remove")
+async def remove_ssl(cert_name: str = Form(...)):
+    success, msg = await certbot_manager.remove_certificate(cert_name)
+    if not success:
+        return RedirectResponse(
+            url=f"/ssl?error={msg}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        url=f"/ssl?msg={msg}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )

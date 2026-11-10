@@ -50,9 +50,17 @@
                         </td>
                         <td>
                             {% if site.ssl_enabled %}
-                            <span class="badge badge-subtle-success text-xs">
-                                <i class="fa-solid fa-lock me-1"></i>HTTPS
-                            </span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge badge-subtle-success text-xs">
+                                    <i class="fa-solid fa-lock me-1"></i>HTTPS
+                                </span>
+                                <form action="/sites/{{ site.name }}/remove-ssl" method="POST" class="d-inline"
+                                      onsubmit="return confirm('Revert \'{{ site.name }}\' from HTTPS back to standard HTTP (port 80)?');">
+                                    <button type="submit" title="Remove SSL and revert to HTTP" class="btn btn-link text-danger p-0 text-xs text-decoration-none" style="line-height: 1;">
+                                        <i class="fa-solid fa-lock-open" style="font-size: 0.8rem;"></i>
+                                    </button>
+                                </form>
+                            </div>
                             {% else %}
                             <a href="/ssl" class="badge badge-subtle-secondary text-decoration-none text-xs">
                                 HTTP (Add SSL)
@@ -129,6 +137,11 @@
                                 class="nav-link py-2 text-sm border-0">
                             <i class="fa-solid fa-file-code me-1"></i> Static Website
                         </button>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/wordpress" class="nav-link py-2 text-sm border-0 text-dark fw-semibold">
+                            <i class="fa-brands fa-wordpress me-1 text-primary"></i> WordPress Wizard &rarr;
+                        </a>
                     </li>
                 </ul>
 

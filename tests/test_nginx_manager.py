@@ -238,3 +238,112 @@ async def test_nginx_default_deny_blocks_on_custom_site_conflict(manager):
         manager.driver.delete_file(custom_conf)
 
 
+def test_remove_ssl_from_config_certbot_split_blocks(manager):
+    certbot_conf = """server {
+    server_name example.com www.example.com;
+    root /var/www/example;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+server {
+    if ($host = www.example.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = example.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name example.com www.example.com;
+    return 404; # managed by Certbot
+}
+"""
+    cleaned = manager.remove_ssl_from_config(certbot_conf)
+
+    # Certbot redirect block and if statements should be removed
+    assert "return 301 https:" not in cleaned
+    assert "return 404" not in cleaned
+    assert "managed by Certbot" not in cleaned
+
+    # SSL directives should be removed
+    assert "ssl_certificate" not in cleaned
+    assert "options-ssl-nginx.conf" not in cleaned
+    assert "443" not in cleaned
+
+    # Server block must now listen on port 80
+    assert "listen 80;" in cleaned
+    assert "server_name example.com www.example.com;" in cleaned
+    assert "root /var/www/example;" in cleaned
+
+
+def test_remove_ssl_from_config_combined_blocks(manager):
+    combined_conf = """server {
+    listen 80;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name myapi.io;
+    ssl_certificate /etc/letsencrypt/live/myapi.io/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/myapi.io/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+"""
+    cleaned = manager.remove_ssl_from_config(combined_conf)
+    assert "listen 80;" in cleaned
+    assert "443" not in cleaned
+    assert "ssl_certificate" not in cleaned
+    assert "proxy_pass http://127.0.0.1:3000;" in cleaned
+
+
+@pytest.mark.asyncio
+async def test_remove_ssl_from_site_lifecycle(manager):
+    site_name = "test-ssl-revert"
+    conf = """server {
+    listen 80;
+    listen 443 ssl;
+    server_name revert.example.com;
+    ssl_certificate /etc/letsencrypt/live/revert.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/revert.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
+"""
+    saved, _ = await manager.save_and_validate_site(site_name, conf, enable_if_new=True)
+    assert saved is True
+
+    site_before = manager.get_site(site_name)
+    assert site_before is not None
+    assert site_before.ssl_enabled is True
+
+    # Revert to HTTP
+    ok, msg = await manager.remove_ssl_from_site(site_name)
+    assert ok is True
+    assert "SSL removed" in msg
+
+    site_after = manager.get_site(site_name)
+    assert site_after is not None
+    assert site_after.ssl_enabled is False
+    assert "listen 80;" in site_after.content
+    assert "ssl_certificate" not in site_after.content
+
+    # Clean up
+    await manager.delete_site(site_name)
+
+
+

@@ -103,7 +103,8 @@
                         <th class="ps-3">Certificate Name</th>
                         <th>Domains</th>
                         <th>Expiry Date</th>
-                        <th class="text-end pe-3">Status</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -112,15 +113,24 @@
                         <td class="ps-3 font-monospace fw-semibold text-dark">{{ cert.name }}</td>
                         <td class="font-monospace text-xs text-muted">{{ cert.domains|join(', ') }}</td>
                         <td class="text-xs text-muted">{{ cert.expiry or "Valid" }}</td>
-                        <td class="text-end pe-3">
+                        <td>
                             <span class="badge badge-subtle-success text-xs">
                                 <span class="pulse-indicator bg-success me-1"></span>Active
                             </span>
                         </td>
+                        <td class="text-end pe-3">
+                            <form action="/ssl/remove" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Remove SSL certificate for \'{{ cert.name }}\'?\n\nThis will:\n1. Revert associated Nginx sites back to standard HTTP (port 80).\n2. Remove all Certbot SSL directives and HTTPS redirects.\n3. Delete the Let\'s Encrypt certificate from the host.\n\nContinue?');">
+                                <input type="hidden" name="cert_name" value="{{ cert.name }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger text-xs">
+                                    <i class="fa-solid fa-lock-open me-1"></i>Remove SSL
+                                </button>
+                            </form>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="4" class="py-5 text-center text-muted">
+                        <td colspan="5" class="py-5 text-center text-muted">
                             <i class="fa-solid fa-lock fs-2 text-muted mb-2 d-block"></i>
                             No active Let's Encrypt certificates found yet. Use the form above to issue your first SSL certificate.
                         </td>

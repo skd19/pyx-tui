@@ -406,6 +406,192 @@ class NginxManager:
         await self.driver.reload_nginx()
         return True, f"Site {filename} deleted"
 
+    def remove_ssl_from_config(self, content: str) -> str:
+        """
+        Parses Nginx configuration and removes SSL/TLS directives:
+        - Eliminates Certbot-generated HTTP->HTTPS redirect server blocks.
+        - Converts 'listen 443 ssl' to 'listen 80'.
+        - Converts 'listen [::]:443 ssl' to 'listen [::]:80'.
+        - Removes ssl_certificate, ssl_certificate_key, ssl_dhparam, options-ssl-nginx.conf, and other SSL directives.
+        - Strips Certbot if-redirect rules.
+        - Ensures every remaining server block has a 'listen 80;' directive.
+        """
+        blocks: list[str] = []
+        i = 0
+        n = len(content)
+        while i < n:
+            m = re.search(r"\bserver\s*\{", content[i:])
+            if not m:
+                break
+            start = i + m.start()
+            brace_count = 0
+            j = i + m.end() - 1
+            while j < n:
+                if content[j] == "{":
+                    brace_count += 1
+                elif content[j] == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        blocks.append(content[start:j + 1])
+                        i = j + 1
+                        break
+                j += 1
+            else:
+                break
+
+        if not blocks:
+            return content
+
+        cleaned_blocks: list[str] = []
+        for b in blocks:
+            # Check if block is purely a certbot redirect block
+            is_certbot_redirect = (
+                "# managed by Certbot" in b
+                and ("return 301 https:" in b or "return 404" in b)
+                and not ("proxy_pass" in b or "fastcgi_pass" in b or re.search(r"\broot\s+", b))
+            )
+            if is_certbot_redirect:
+                continue
+
+            lines = b.splitlines()
+            new_lines: list[str] = []
+            has_listen_80 = any(re.search(r"\blisten\s+([^;]*\b80\b)", l) for l in lines)
+            has_listen_80_v6 = any(re.search(r"\blisten\s+\[::\]:80\b", l) for l in lines)
+
+            skip_if_block = False
+            skip_brace_depth = 0
+
+            for line in lines:
+                stripped = line.strip()
+
+                # Handle if ($host = ...) { return 301 https:... } # managed by Certbot
+                if re.search(r"if\s*\(\$host\s*=.*https:", stripped) or (
+                    "if ($host =" in stripped and "# managed by Certbot" in line
+                ):
+                    skip_if_block = True
+                    skip_brace_depth = line.count("{") - line.count("}")
+                    continue
+                if skip_if_block:
+                    skip_brace_depth += line.count("{") - line.count("}")
+                    if skip_brace_depth <= 0:
+                        skip_if_block = False
+                    continue
+
+                # Remove Certbot and SSL directives
+                if any(
+                    stripped.startswith(prefix)
+                    for prefix in [
+                        "ssl_certificate",
+                        "ssl_certificate_key",
+                        "ssl_dhparam",
+                        "ssl_trusted_certificate",
+                        "ssl_protocols",
+                        "ssl_ciphers",
+                        "ssl_prefer_server_ciphers",
+                        "ssl_session_",
+                        "ssl_stapling",
+                    ]
+                ):
+                    continue
+                if "include /etc/letsencrypt/" in stripped:
+                    continue
+
+                # Transform listen 443 ssl -> listen 80
+                if re.search(r"\blisten\s+.*443.*ssl", stripped):
+                    is_v6 = "[::]" in stripped
+                    if is_v6:
+                        if not has_listen_80_v6:
+                            indent = line[: len(line) - len(line.lstrip())]
+                            new_lines.append(f"{indent}listen [::]:80;")
+                            has_listen_80_v6 = True
+                    else:
+                        if not has_listen_80:
+                            indent = line[: len(line) - len(line.lstrip())]
+                            new_lines.append(f"{indent}listen 80;")
+                            has_listen_80 = True
+                    continue
+
+                # Strip '# managed by Certbot' comments from line
+                cleaned_line = re.sub(r"\s*#\s*managed by Certbot", "", line)
+                new_lines.append(cleaned_line)
+
+            cleaned_block = "\n".join(new_lines)
+            # Ensure the block has at least listen 80
+            if not re.search(r"\blisten\s+[^;]*80", cleaned_block):
+                cleaned_block = re.sub(
+                    r"(\bserver\s*\{)", r"\1\n    listen 80;", cleaned_block, count=1
+                )
+
+            cleaned_blocks.append(cleaned_block)
+
+        return "\n\n".join(cleaned_blocks).strip() + "\n"
+
+    def find_sites_for_domain_or_cert(self, domain_or_cert: str) -> list[SiteSummary]:
+        """
+        Discovers all sites matching a domain or certificate name.
+        Matches by domain names (including apex/www aliases) or certificate live path reference.
+        """
+        target = domain_or_cert.strip().lower()
+        root_dom, www_dom = parse_domain_and_www_alias(target)
+        target_domains = {target}
+        if root_dom:
+            target_domains.add(root_dom)
+        if www_dom:
+            target_domains.add(www_dom)
+
+        matching_sites: list[SiteSummary] = []
+        for site in self.list_sites():
+            site_domains = {d.lower() for d in site.domains}
+            # Check domain intersection
+            if site_domains & target_domains:
+                matching_sites.append(site)
+                continue
+            # Check if config references the certificate live directory
+            if f"/etc/letsencrypt/live/{target}/" in site.content or (
+                root_dom and f"/etc/letsencrypt/live/{root_dom}/" in site.content
+            ):
+                matching_sites.append(site)
+                continue
+
+        return matching_sites
+
+    async def remove_ssl_from_site(self, name: str) -> tuple[bool, str]:
+        """
+        Removes SSL directives from a site in sites-available (and sites-enabled),
+        validates with nginx -t, rolls back on syntax errors, and reloads Nginx.
+        """
+        filename = self._sanitize_name(name)
+        available_path = self.available_dir / filename
+        enabled_path = self.enabled_dir / filename
+
+        if not self.driver.file_exists(available_path):
+            return False, f"Site '{name}' not found in sites-available"
+
+        original_content = self.driver.read_file(available_path)
+        is_enabled = self.driver.file_exists(enabled_path)
+
+        cleaned_content = self.remove_ssl_from_config(original_content)
+        if cleaned_content.strip() == original_content.strip():
+            return True, f"Site '{name}' already has no SSL directives"
+
+        # Write cleaned content
+        self.driver.write_file(available_path, cleaned_content)
+        if is_enabled:
+            self.driver.write_file(enabled_path, cleaned_content)
+
+        # Pre-validate with nginx -t
+        is_valid, msg = await self.driver.test_nginx()
+        if not is_valid:
+            # Atomic rollback
+            self.driver.write_file(available_path, original_content)
+            if is_enabled:
+                self.driver.write_file(enabled_path, original_content)
+            return False, f"Cannot remove SSL: Nginx syntax error: {msg}"
+
+        # Reload Nginx
+        await self.driver.reload_nginx()
+        return True, f"SSL removed from site '{name}'. Site is now served over HTTP."
+
     def is_default_deny_active(self) -> bool:
         """Checks if the direct IP reject (default-deny catch-all) is currently enabled."""
         return self.driver.file_exists(self.enabled_dir / "default-deny.conf")

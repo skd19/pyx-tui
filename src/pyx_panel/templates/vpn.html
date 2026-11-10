@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+
+{% block title %}WireGuard VPN - pyx-panel{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4" x-data="wireguardApp()">
+
+    <!-- Top Header -->
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between pb-3 border-bottom gap-3">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <h1 class="h3 fw-bold text-dark mb-0">WireGuard VPN Service</h1>
+                {% if server.configured %}
+                    {% if server.running %}
+                    <span class="badge badge-subtle-success text-xs">
+                        <span class="pulse-indicator bg-success me-1"></span>Running
+                    </span>
+                    {% else %}
+                    <span class="badge badge-subtle-secondary text-xs">
+                        <i class="fa-solid fa-circle-stop me-1 text-danger"></i>Stopped
+                    </span>
+                    {% endif %}
+                {% else %}
+                <span class="badge badge-subtle-warning text-xs">Not Configured</span>
+                {% endif %}
+            </div>
+            <p class="text-muted text-sm mb-0">
+                Encrypted peer-to-peer VPN tunnel with automated firewall port blocking on stop (Zero Exposure).
+            </p>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            {% if server.configured %}
+                {% if server.running %}
+                <form action="/vpn/stop" method="POST" class="d-inline" @submit="confirmStop($event)">
+                    <button type="submit" class="btn btn-outline-danger">
+                        <i class="fa-solid fa-stop me-1"></i> Stop VPN (Block Port)
+                    </button>
+                </form>
+                {% else %}
+                <form action="/vpn/start" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-success text-white">
+                        <i class="fa-solid fa-play me-1"></i> Start VPN (Open Port)
+                    </button>
+                </form>
+                {% endif %}
+
+                <button @click="showSettingsModal = true" type="button" class="btn btn-outline-secondary">
+                    <i class="fa-solid fa-gear me-1"></i> Settings
+                </button>
+
+                <button @click="showAddModal = true" type="button" class="btn btn-primary">
+                    <i class="fa-solid fa-plus me-1"></i> Add Client
+                </button>
+            {% else %}
+                <button @click="showSetupModal = true" type="button" class="btn btn-primary">
+                    <i class="fa-solid fa-wand-magic-sparkles me-1"></i> 1-Click Setup Wizard
+                </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Prerequisite Package Check Banner -->
+    {% if not packages_installed %}
+    <div class="alert alert-warning d-flex align-items-center justify-content-between p-3 border-warning-subtle shadow-sm mb-0">
+        <div class="d-flex align-items-center gap-3">
+            <div class="rounded-circle bg-warning text-white d-flex align-items-center justify-content-center" style="width: 2.5rem; height: 2.5rem;">
+                <i class="fa-solid fa-box-open fs-5"></i>
+            </div>
+            <div>
+                <h6 class="fw-bold text-dark mb-0">WireGuard Packages Missing</h6>
+                <div class="text-xs text-muted">WireGuard kernel module or tools are not yet installed on this VPS.</div>
+            </div>
+        </div>
+        <a href="/packages" class="btn btn-sm btn-warning fw-semibold px-3 text-dark">
+            <i class="fa-solid fa-download me-1"></i> Install from Packages
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Live KPI Metrics Cards -->
+    <div class="row g-3">
+        <!-- Service Status -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3 shadow-sm border-0">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase tracking-wider text-muted">Daemon State</span>
+                    <i class="fa-solid fa-server text-muted"></i>
+                </div>
+                <div class="h4 fw-bold text-dark mb-1">
+                    {% if server.running %}
+                    <span class="text-success"><i class="fa-solid fa-circle-check fs-6 me-1"></i>Active</span>
+                    {% elif server.configured %}
+                    <span class="text-muted"><i class="fa-solid fa-circle-stop fs-6 me-1"></i>Stopped</span>
+                    {% else %}
+                    <span class="text-warning">Unconfigured</span>
+                    {% endif %}
+                </div>
+                <div class="text-xs text-muted">
+                    Interface: <span class="font-monospace fw-bold text-dark">{{ server.interface }}</span>
+                    {% if server.configured %}
+                    &bull; Port: <span class="font-monospace fw-bold text-dark">{{ server.listen_port }}/udp</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Firewall Zero Exposure State -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3 shadow-sm border-0">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase tracking-wider text-muted">Firewall Port Security</span>
+                    <i class="fa-solid fa-shield-halved text-muted"></i>
+                </div>
+                <div class="h4 fw-bold mb-1">
+                    {% if server.firewall_port_open %}
+                    <span class="text-success" title="Port is allowed for authorized VPN traffic">
+                        <i class="fa-solid fa-lock-open fs-6 me-1"></i>Port Open
+                    </span>
+                    {% else %}
+                    <span class="text-primary" title="Port rule is deleted/blocked in UFW. Zero exposure when inactive!">
+                        <i class="fa-solid fa-shield-check fs-6 me-1"></i>Blocked (Zero Exp)
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="text-xs text-muted">
+                    {% if server.running and server.firewall_port_open %}
+                    UFW allows <span class="font-monospace fw-semibold">{{ server.listen_port }}/udp</span> for clients
+                    {% elif not server.running and not server.firewall_port_open %}
+                    <span class="text-success fw-semibold">&check; Hidden from external port scans</span>
+                    {% else %}
+                    Status synced with UFW policy
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Connected Peers -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3 shadow-sm border-0">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase tracking-wider text-muted">Connected Clients</span>
+                    <i class="fa-solid fa-users text-muted"></i>
+                </div>
+                <div class="h4 fw-bold text-dark mb-1">
+                    {{ server.active_peers_count }} <span class="fs-6 fw-normal text-muted">/ {{ server.peers_count }} active</span>
+                </div>
+                <div class="text-xs text-muted">
+                    Subnet: <span class="font-monospace fw-bold text-dark">{{ server.subnet }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Data Transferred -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100 p-3 shadow-sm border-0">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-xs fw-semibold text-uppercase tracking-wider text-muted">Total Bandwidth</span>
+                    <i class="fa-solid fa-arrow-right-arrow-left text-muted"></i>
+                </div>
+                <div class="h4 fw-bold text-dark mb-1">
+                    {{ server.total_transfer_human }}
+                </div>
+                <div class="text-xs text-muted">
+                    <span class="text-success"><i class="fa-solid fa-arrow-down me-1"></i>Rx</span> &bull;
+                    <span class="text-primary"><i class="fa-solid fa-arrow-up me-1"></i>Tx</span> cumulative
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- If Not Configured: Setup Wizard Box -->
+    {% if not server.configured %}
+    <div class="card border-0 shadow-sm p-4 text-center py-5">
+        <div class="mx-auto mb-3 d-inline-flex align-items-center justify-content-center rounded-circle bg-primary-subtle text-primary" style="width: 4rem; height: 4rem; font-size: 1.75rem;">
+            <i class="fa-solid fa-network-wired"></i>
+        </div>
+        <h4 class="fw-bold text-dark mb-2">WireGuard Server Not Yet Configured</h4>
+        <p class="text-muted max-w-lg mx-auto text-sm mb-4" style="max-width: 520px;">
+            Set up your high-speed VPN in seconds. pyx-panel will automatically detect your public IP, generate cryptographic server keys, configure NAT masquerading rules, and enable kernel IPv4 forwarding.
+        </p>
+        <div>
+            <button @click="showSetupModal = true" type="button" class="btn btn-primary px-4 py-2">
+                <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Launch 1-Click Configurator
+            </button>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- Peers & Clients Management -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-dark">Configured VPN Clients</span>
+                <span class="badge badge-subtle-secondary text-xs">{{ peers|length }} devices</span>
+            </div>
+            <button @click="showAddModal = true" type="button" class="btn btn-sm btn-primary">
+                <i class="fa-solid fa-plus me-1"></i> Add Client
+            </button>
+        </div>
+
+        <div class="card-body p-0">
+            {% if peers %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light text-xs text-uppercase tracking-wider text-muted">
+                        <tr>
+                            <th class="ps-3 py-3">Client / Device</th>
+                            <th>Virtual IP</th>
+                            <th>Status & Handshake</th>
+                            <th>Transfer</th>
+                            <th>Tunnel Mode</th>
+                            <th>Security</th>
+                            <th class="pe-3 text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm">
+                        {% for peer in peers %}
+                        <tr>
+                            <td class="ps-3 py-3">
+                                <div class="d-flex align-items-center gap-2.5">
+                                    <div class="rounded-circle bg-light d-flex align-items-center justify-content-center text-muted" style="width: 2.2rem; height: 2.2rem;">
+                                        {% if 'phone' in peer.name.lower() or 'mobile' in peer.name.lower() %}
+                                        <i class="fa-solid fa-mobile-screen"></i>
+                                        {% elif 'mac' in peer.name.lower() or 'pc' in peer.name.lower() or 'laptop' in peer.name.lower() %}
+                                        <i class="fa-solid fa-laptop"></i>
+                                        {% else %}
+                                        <i class="fa-solid fa-desktop"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold text-dark">{{ peer.name }}</div>
+                                        <div class="text-xs text-muted">Added: {{ peer.created_at or 'Recently' }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge badge-subtle-secondary font-monospace">{{ peer.allowed_ips }}</span>
+                            </td>
+                            <td>
+                                {% if peer.latest_handshake > 0 and peer.latest_handshake_human != 'Never' %}
+                                <div class="d-flex align-items-center gap-1.5">
+                                    <span class="pulse-indicator bg-success"></span>
+                                    <span class="fw-semibold text-dark text-xs">{{ peer.latest_handshake_human }}</span>
+                                </div>
+                                {% if peer.endpoint %}
+                                <div class="text-xs text-muted font-monospace mt-0.5">{{ peer.endpoint }}</div>
+                                {% endif %}
+                                {% else %}
+                                <span class="badge badge-subtle-secondary text-xs">No Handshake Yet</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="text-xs">
+                                    <span class="text-muted">Total:</span> <span class="fw-semibold text-dark">{{ peer.transfer_total_human }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if peer.tunnel_mode == 'full' %}
+                                <span class="badge badge-subtle-primary text-xs" title="Routes all internet traffic via VPS (0.0.0.0/0)">
+                                    <i class="fa-solid fa-globe me-1"></i>Full Tunnel
+                                </span>
+                                {% else %}
+                                <span class="badge badge-subtle-secondary text-xs" title="Routes only private VPS subnet (10.8.0.0/24)">
+                                    <i class="fa-solid fa-diagram-project me-1"></i>Split Tunnel
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if peer.preshared_key %}
+                                <span class="badge badge-subtle-success text-xs" title="Post-Quantum Resistant 256-bit PSK enabled">
+                                    <i class="fa-solid fa-atom me-1"></i>PSK Guard
+                                </span>
+                                {% else %}
+                                <span class="badge badge-subtle-secondary text-xs">Standard</span>
+                                {% endif %}
+                            </td>
+                            <td class="pe-3 text-end">
+                                <div class="d-flex align-items-center justify-content-end gap-1.5">
+                                    <!-- QR Code Button -->
+                                    <button @click="openQrModal('{{ peer.name }}')" type="button" class="btn btn-sm btn-outline-primary px-2 py-1 text-xs" title="Show QR Code for mobile apps">
+                                        <i class="fa-solid fa-qrcode me-1"></i> QR Code
+                                    </button>
+
+                                    <!-- Download .conf Button -->
+                                    <a href="/vpn/peer/{{ peer.name }}/download" class="btn btn-sm btn-outline-secondary px-2 py-1 text-xs" title="Download .conf file for macOS/Windows/Linux">
+                                        <i class="fa-solid fa-download me-1"></i> .conf
+                                    </a>
+
+                                    <!-- Toggle Enabled/Disabled -->
+                                    <form action="/vpn/peer/{{ peer.name }}/toggle" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm {% if peer.enabled %}btn-outline-secondary text-muted{% else %}btn-outline-success{% endif %} px-2 py-1 text-xs" title="{% if peer.enabled %}Disable Peer{% else %}Enable Peer{% endif %}">
+                                            <i class="fa-solid {% if peer.enabled %}fa-pause{% else %}fa-play{% endif %}"></i>
+                                        </button>
+                                    </form>
+
+                                    <!-- Delete Peer -->
+                                    <form action="/vpn/peer/{{ peer.name }}/delete" method="POST" class="d-inline" @submit="confirmDeletePeer($event, '{{ peer.name }}')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger px-2 py-1 text-xs" title="Delete Peer">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <div class="text-muted mb-2"><i class="fa-solid fa-user-plus fs-2"></i></div>
+                <h6 class="fw-bold text-dark">No VPN Clients Added Yet</h6>
+                <p class="text-muted text-xs mb-3">Add a client device to connect your mobile phones, laptops, or remote servers.</p>
+                <button @click="showAddModal = true" type="button" class="btn btn-sm btn-primary">
+                    <i class="fa-solid fa-plus me-1"></i> Add First Client
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ================================================================== -->
+    <!-- Setup Wizard Modal                                                 -->
+    <!-- ================================================================== -->
+    <div x-show="showSetupModal" x-cloak class="app-modal-backdrop" style="z-index: 1060;">
+        <div class="card shadow-lg border-0" style="max-width: 520px; width: 100%; border-radius: 1rem;" @click.away="showSetupModal = false">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                <span class="fw-bold text-dark d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-primary"></i> 1-Click WireGuard Setup Wizard
+                </span>
+                <button @click="showSetupModal = false" type="button" class="btn-close"></button>
+            </div>
+            <form action="/vpn/setup" method="POST">
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">VPS Public IP (Endpoint)</label>
+                        <input type="text" name="server_ip" value="{{ server.server_ip }}" class="form-control font-monospace" placeholder="e.g. 198.51.100.1" required>
+                        <div class="form-text text-xs">The public IP address clients will connect to.</div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold text-xs text-uppercase text-muted">Listen Port (UDP)</label>
+                            <input type="number" name="server_port" value="51820" class="form-control font-monospace" required>
+                            <div class="form-text text-xs">Standard is 51820.</div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold text-xs text-uppercase text-muted">Subnet</label>
+                            <input type="text" name="subnet" value="10.8.0.1/24" class="form-control font-monospace" required>
+                            <div class="form-text text-xs">Private VPN IP range.</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Primary Network Interface</label>
+                        <input type="text" name="network_interface" value="{{ server.network_interface }}" class="form-control font-monospace" placeholder="eth0" required>
+                        <div class="form-text text-xs">Used for NAT iptables masquerade rules.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Privacy DNS Resolvers</label>
+                        <input type="text" name="dns" value="1.1.1.1, 1.0.0.1" class="form-control font-monospace" required>
+                        <div class="form-text text-xs">Cloudflare (1.1.1.1) or Quad9 (9.9.9.9) prevents DNS leaks.</div>
+                    </div>
+                </div>
+                <div class="card-footer bg-light p-3 border-top d-flex justify-content-end gap-2">
+                    <button @click="showSetupModal = false" type="button" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-check me-1"></i> Initialize & Start Server
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- Add Client Modal                                                   -->
+    <!-- ================================================================== -->
+    <div x-show="showAddModal" x-cloak class="app-modal-backdrop" style="z-index: 1060;">
+        <div class="card shadow-lg border-0" style="max-width: 500px; width: 100%; border-radius: 1rem;" @click.away="showAddModal = false">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                <span class="fw-bold text-dark d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-user-plus text-primary"></i> Add WireGuard Client
+                </span>
+                <button @click="showAddModal = false" type="button" class="btn-close"></button>
+            </div>
+            <form action="/vpn/peer/add" method="POST">
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Device / Client Name</label>
+                        <input type="text" name="name" class="form-control" placeholder="e.g. sk-iphone, macbook-pro" required autofocus>
+                        <div class="form-text text-xs">Use alphanumeric characters, hyphens, or underscores.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Allocated IP (Auto-Assigned)</label>
+                        <input type="text" class="form-control font-monospace bg-light" value="{{ next_ip }}/32" readonly>
+                        <div class="form-text text-xs">Next sequential available address on VPN subnet.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Tunnel Routing Mode</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="tunnel_mode" id="modeFull" value="full" checked>
+                                <label class="form-check-label text-sm" for="modeFull">
+                                    <strong>Full Tunnel</strong>
+                                    <div class="text-xs text-muted">Route all internet traffic via VPS (0.0.0.0/0).</div>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="tunnel_mode" id="modeSplit" value="split">
+                                <label class="form-check-label text-sm" for="modeSplit">
+                                    <strong>Split Tunnel</strong>
+                                    <div class="text-xs text-muted">Only route VPS private network (10.8.0.0/24).</div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="use_psk" id="usePskCheck" value="true" checked>
+                        <label class="form-check-label text-sm fw-semibold text-dark" for="usePskCheck">
+                            Post-Quantum Preshared Key (PSK)
+                        </label>
+                        <div class="form-text text-xs">Adds an extra layer of 256-bit symmetric encryption for post-quantum defense.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Client DNS</label>
+                        <input type="text" name="dns" value="1.1.1.1, 1.0.0.1" class="form-control font-monospace" required>
+                    </div>
+                </div>
+                <div class="card-footer bg-light p-3 border-top d-flex justify-content-end gap-2">
+                    <button @click="showAddModal = false" type="button" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-plus me-1"></i> Generate Client
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- Server Settings Modal                                              -->
+    <!-- ================================================================== -->
+    <div x-show="showSettingsModal" x-cloak class="app-modal-backdrop" style="z-index: 1060;">
+        <div class="card shadow-lg border-0" style="max-width: 500px; width: 100%; border-radius: 1rem;" @click.away="showSettingsModal = false">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                <span class="fw-bold text-dark d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-gear text-primary"></i> Server & Stealth Port Settings
+                </span>
+                <button @click="showSettingsModal = false" type="button" class="btn-close"></button>
+            </div>
+            <form action="/vpn/settings" method="POST">
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">WireGuard Listen Port (UDP)</label>
+                        <input type="number" name="server_port" value="{{ server.listen_port }}" class="form-control font-monospace" required>
+                        <div class="form-text text-xs">
+                            Change from default 51820 to any high port (or standard 443/udp) to evade ISP deep-packet inspection (DPI). Firewall rules will update automatically.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Server Public IP (Endpoint)</label>
+                        <input type="text" name="server_ip" value="{{ server.server_ip }}" class="form-control font-monospace" required>
+                        <div class="form-text text-xs">Domain name or VPS public IPv4 for client connections.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted">Default Client DNS</label>
+                        <input type="text" name="dns" value="{{ server.dns }}" class="form-control font-monospace" required>
+                        <div class="form-text text-xs">DNS resolvers embedded into newly created client configurations.</div>
+                    </div>
+                </div>
+                <div class="card-footer bg-light p-3 border-top d-flex justify-content-end gap-2">
+                    <button @click="showSettingsModal = false" type="button" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- QR Code & Client Config Modal                                      -->
+    <!-- ================================================================== -->
+    <div x-show="showQrModal" x-cloak class="app-modal-backdrop" style="z-index: 1060;">
+        <div class="card shadow-lg border-0" style="max-width: 520px; width: 100%; border-radius: 1rem;" @click.away="showQrModal = false">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                <span class="fw-bold text-dark d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-qrcode text-primary"></i> <span x-text="activePeerName"></span> - Mobile QR Code
+                </span>
+                <button @click="showQrModal = false" type="button" class="btn-close"></button>
+            </div>
+            <div class="card-body p-4 text-center">
+                <div class="mb-3">
+                    <p class="text-muted text-xs mb-3">
+                        Scan this QR code using the free official <strong>WireGuard app</strong> on your iPhone or Android.
+                    </p>
+                    <div class="p-3 bg-white d-inline-block rounded border shadow-sm">
+                        <canvas id="qrCanvas" style="max-width: 250px; width: 100%; height: auto;"></canvas>
+                    </div>
+                </div>
+
+                <div class="text-start mt-3">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label fw-semibold text-xs text-uppercase text-muted mb-0">Raw Configuration</label>
+                        <button @click="copyConfig()" type="button" class="btn btn-link text-xs p-0 text-decoration-none">
+                            <i class="fa-regular fa-copy me-1"></i> <span x-text="copyText">Copy Config</span>
+                        </button>
+                    </div>
+                    <textarea x-model="activeConfig" rows="5" class="form-control font-monospace text-xs bg-light" readonly></textarea>
+                </div>
+            </div>
+            <div class="card-footer bg-light p-3 border-top d-flex justify-content-between align-items-center">
+                <a :href="'/vpn/peer/' + activePeerName + '/download'" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-download me-1"></i> Download .conf
+                </a>
+                <button @click="showQrModal = false" type="button" class="btn btn-sm btn-primary px-3">Done</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- QR Code Library via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+<script>
+    function wireguardApp() {
+        return {
+            showSetupModal: false,
+            showAddModal: false,
+            showSettingsModal: false,
+            showQrModal: false,
+            activePeerName: '',
+            activeConfig: '',
+            copyText: 'Copy Config',
+
+            confirmStop(e) {
+                if (!confirm("Are you sure you want to stop WireGuard VPN?\n\nThe firewall port rule will be actively deleted and blocked so no open UDP port is exposed to the internet.")) {
+                    e.preventDefault();
+                }
+            },
+
+            confirmDeletePeer(e, name) {
+                if (!confirm(`Are you sure you want to delete client '${name}'?\n\nThis client will lose access immediately.`)) {
+                    e.preventDefault();
+                }
+            },
+
+            async openQrModal(peerName) {
+                this.activePeerName = peerName;
+                this.copyText = 'Copy Config';
+                this.showQrModal = true;
+
+                try {
+                    const res = await fetch(`/vpn/peer/${encodeURIComponent(peerName)}/config`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.activeConfig = data.config;
+
+                        this.$nextTick(() => {
+                            const canvas = document.getElementById('qrCanvas');
+                            if (canvas && window.QRCode) {
+                                QRCode.toCanvas(canvas, data.config, {
+                                    width: 250,
+                                    margin: 2,
+                                    color: {
+                                        dark: '#0f172a',
+                                        light: '#ffffff'
+                                    }
+                                }, function (error) {
+                                    if (error) console.error(error);
+                                });
+                            }
+                        });
+                    } else {
+                        alert("Failed to load peer configuration");
+                    }
+                } catch (e) {
+                    console.error("Error fetching peer config:", e);
+                }
+            },
+
+            async copyConfig() {
+                try {
+                    await navigator.clipboard.writeText(this.activeConfig);
+                    this.copyText = 'Copied!';
+                    setTimeout(() => {
+                        this.copyText = 'Copy Config';
+                    }, 2000);
+                } catch (e) {
+                    console.error("Copy failed:", e);
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

@@ -81,6 +81,10 @@ class SystemDriver(Protocol):
         """Run certbot for one or more domains."""
         ...
 
+    async def delete_certificate(self, cert_name: str) -> tuple[bool, str]:
+        """Deletes an SSL certificate and renewal configuration from Certbot."""
+        ...
+
     async def list_certificates(self) -> list[dict]:
         """List issued SSL certificates."""
         ...
@@ -148,3 +152,51 @@ class SystemDriver(Protocol):
     async def read_sysctl_setting(self, key: str) -> str:
         """Reads a live kernel sysctl value (e.g. net.ipv4.tcp_syncookies)."""
         ...
+
+    async def create_database_and_user(self, db_name: str, db_user: str, db_pass: str) -> tuple[bool, str]:
+        """Creates a MariaDB/MySQL database, dedicated user, and grants privileges."""
+        ...
+
+    async def dump_database(self, db_name: str, target_file: Path) -> tuple[bool, str]:
+        """Dumps a database to a .sql backup file via mysqldump or mariadb-dump."""
+        ...
+
+    async def list_php_fpm_sockets(self) -> list[str]:
+        """Lists active PHP-FPM UNIX domain sockets on the host."""
+        ...
+
+    async def get_wireguard_status(self, interface: str = "wg0") -> dict:
+        """Returns WireGuard interface status, listen port, public key, and active peer dump."""
+        ...
+
+    async def generate_wireguard_keypair(self) -> tuple[str, str]:
+        """Generates a Curve25519 (private_key, public_key) pair in Base64."""
+        ...
+
+    async def generate_wireguard_psk(self) -> str:
+        """Generates a 256-bit symmetric preshared key in Base64."""
+        ...
+
+    async def get_default_network_interface(self) -> str:
+        """Detects the primary public network interface name (e.g. eth0, ens3)."""
+        ...
+
+    async def start_wireguard(self, interface: str = "wg0") -> tuple[bool, str]:
+        """Starts the WireGuard interface service."""
+        ...
+
+    async def stop_wireguard(self, interface: str = "wg0") -> tuple[bool, str]:
+        """Stops the WireGuard interface service."""
+        ...
+
+    async def sync_wireguard_peer(
+        self,
+        interface: str,
+        public_key: str,
+        allowed_ips: str,
+        preshared_key: str = "",
+        remove: bool = False,
+    ) -> tuple[bool, str]:
+        """Live-registers or unregisters a peer without dropping active tunnel connections."""
+        ...
+

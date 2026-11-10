@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     nginx_main_config: Path = Path("/etc/nginx/nginx.conf")
     systemd_system_dir: Path = Path("/etc/systemd/system")
     apps_dir: Path = Path("/opt/apps")
+    wireguard_dir: Path = Path("/etc/wireguard")
+    wireguard_conf: Path = Path("/etc/wireguard/wg0.conf")
 
     # Mock data directory when mock_system is True
     mock_dir: Path = Path("./.pyx_mock")

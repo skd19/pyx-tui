@@ -301,6 +301,33 @@ class SecurityManager:
                 details="No unshielded internal application ports or databases detected on public interfaces.",
             ))
 
+        # 10. Audit WireGuard VPN Zero-Exposure & Port Isolation
+        from pyx_panel.services.wireguard_manager import wireguard_manager
+        if wireguard_manager.is_configured():
+            wg_status = await wireguard_manager.get_status()
+            if not wg_status.running and wg_status.firewall_port_open:
+                checks.append(SecurityCheckItem(
+                    id="wireguard_zero_exposure",
+                    category="Exposure",
+                    title="WireGuard Inactive Port Exposure",
+                    description="WireGuard VPN service is stopped but UDP listen port is still allowed in UFW.",
+                    severity="HIGH",
+                    status="WARN",
+                    remediation_action="block_wireguard_port",
+                    remediation_label="Block WireGuard Port",
+                    details=f"Port {wg_status.listen_port}/udp is allowed in firewall while WireGuard is inactive. Stop server to enforce zero-exposure.",
+                ))
+            else:
+                checks.append(SecurityCheckItem(
+                    id="wireguard_zero_exposure",
+                    category="Exposure",
+                    title="WireGuard VPN Firewall Isolation",
+                    description="WireGuard port adheres to zero-exposure security baseline.",
+                    severity="LOW",
+                    status="PASS",
+                    details="WireGuard port exposure matches active service state (zero-exposure when stopped).",
+                ))
+
         # Calculate Score (0-100) and Grade
         weights = {
             "ufw_status": 15,
@@ -418,6 +445,11 @@ class SecurityManager:
         if not clean_port:
             return False, "Port number cannot be empty"
         return await self.driver.ufw_deny(clean_port, proto=proto, comment="Pyx Internal App Isolation")
+
+    async def block_wireguard_port(self) -> tuple[bool, str]:
+        """Enforces zero exposure by stopping WireGuard and blocking its port."""
+        from pyx_panel.services.wireguard_manager import wireguard_manager
+        return await wireguard_manager.stop_server()
 
     async def harden_all(self) -> dict[str, tuple[bool, str]]:
         """

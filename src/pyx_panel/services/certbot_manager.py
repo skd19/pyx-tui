@@ -6,7 +6,7 @@ import socket
 import httpx2
 from pydantic import BaseModel, Field
 from pyx_panel.core import get_driver
-from pyx_panel.services.nginx_manager import parse_domain_and_www_alias
+from pyx_panel.services.nginx_manager import nginx_manager, parse_domain_and_www_alias
 
 
 class DNSCheckResult(BaseModel):
@@ -184,6 +184,73 @@ class CertbotManager:
     async def list_certificates(self) -> list[dict]:
         """Returns list of currently installed certificates."""
         return await self.driver.list_certificates()
+
+    async def remove_certificate(self, cert_name_or_domain: str) -> tuple[bool, str]:
+        """
+        Removes an SSL certificate:
+        1. Identifies the certificate name and associated domains.
+        2. Locates any Nginx virtual hosts configured with this certificate/domain.
+        3. Strips SSL directives from those virtual hosts, reverting them to HTTP.
+        4. Validates Nginx configuration syntax.
+        5. Deletes the certificate from Certbot using 'certbot delete'.
+        6. Reloads Nginx.
+        """
+        target = cert_name_or_domain.strip()
+        if not target:
+            return False, "No certificate or domain specified."
+
+        # 1. Look up certificate in certbot list
+        certs = await self.list_certificates()
+        matched_cert = next(
+            (c for c in certs if c.get("name") == target or target in c.get("domains", [])),
+            None,
+        )
+        cert_name = matched_cert["name"] if matched_cert else target
+
+        # 2. Find matching sites
+        matching_sites = nginx_manager.find_sites_for_domain_or_cert(cert_name)
+        if matched_cert:
+            for d in matched_cert.get("domains", []):
+                for s in nginx_manager.find_sites_for_domain_or_cert(d):
+                    if s.name not in [ms.name for ms in matching_sites]:
+                        matching_sites.append(s)
+
+        # 3. For each site with SSL enabled, remove SSL with rollback capability
+        reverted_sites: list[tuple[str, str, bool]] = []
+        for s in matching_sites:
+            if s.ssl_enabled:
+                available_path = nginx_manager.available_dir / s.filename
+                enabled_path = nginx_manager.enabled_dir / s.filename
+                orig = self.driver.read_file(available_path)
+                cleaned = nginx_manager.remove_ssl_from_config(orig)
+                reverted_sites.append((s.name, orig, s.enabled))
+                self.driver.write_file(available_path, cleaned)
+                if s.enabled:
+                    self.driver.write_file(enabled_path, cleaned)
+
+        # 4. Test Nginx syntax
+        is_valid, msg = await self.driver.test_nginx()
+        if not is_valid:
+            # Atomic rollback
+            for s_name, orig, is_en in reverted_sites:
+                fn = nginx_manager._sanitize_name(s_name)
+                self.driver.write_file(nginx_manager.available_dir / fn, orig)
+                if is_en:
+                    self.driver.write_file(nginx_manager.enabled_dir / fn, orig)
+            return False, f"Cannot remove SSL: Nginx syntax test failed: {msg}"
+
+        # 5. Delete certificate from Certbot
+        del_ok, del_msg = await self.driver.delete_certificate(cert_name)
+
+        # 6. Reload Nginx
+        await self.driver.reload_nginx()
+
+        site_names = [s[0] for s in reverted_sites]
+        sites_info = f" (reverted sites: {', '.join(site_names)})" if site_names else ""
+        if not del_ok and matched_cert:
+            return True, f"Nginx sites reverted to HTTP, but Certbot delete noted: {del_msg}"
+
+        return True, f"SSL certificate '{cert_name}' removed successfully{sites_info}. Site is now on HTTP."
 
 
 certbot_manager = CertbotManager()

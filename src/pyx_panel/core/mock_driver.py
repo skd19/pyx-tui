@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import datetime
 import os
 import re
+import secrets
 import shutil
 from pathlib import Path
 from typing import AsyncIterator
@@ -20,12 +22,14 @@ class MockSystemDriver:
         self.conf_d = self.base_dir / "nginx" / "conf.d"
         self.nginx_conf = self.base_dir / "nginx" / "nginx.conf"
         self.systemd_dir = self.base_dir / "systemd" / "system"
+        self.wireguard_dir = self.base_dir / "wireguard"
         
         # Ensure directories exist
         self.sites_available.mkdir(parents=True, exist_ok=True)
         self.sites_enabled.mkdir(parents=True, exist_ok=True)
         self.conf_d.mkdir(parents=True, exist_ok=True)
         self.systemd_dir.mkdir(parents=True, exist_ok=True)
+        self.wireguard_dir.mkdir(parents=True, exist_ok=True)
 
         # Mock runtime state
         self.service_states: dict[str, dict] = {}
@@ -48,6 +52,11 @@ class MockSystemDriver:
             "git",
             "uv",
             "systemd",
+            "php-fpm",
+            "mariadb-server",
+            "wp-cli",
+            "wireguard",
+            "wireguard-tools",
         }
         self.mock_package_versions: dict[str, str] = {
             "nginx": "1.24.0 (Ubuntu)",
@@ -58,7 +67,23 @@ class MockSystemDriver:
             "git": "2.43.0",
             "uv": "0.4.29",
             "systemd": "255.4-1ubuntu8",
+            "php-fpm": "8.2.18-1ubuntu1",
+            "mariadb-server": "10.11.6-MariaDB",
+            "wp-cli": "2.10.0",
+            "wireguard": "1.0.20210914-1ubuntu4",
+            "wireguard-tools": "1.0.20210914-1ubuntu4",
         }
+        self.wireguard_running = False
+        self.wireguard_listen_port = 51820
+        self.wireguard_public_key = ""
+        self.wireguard_private_key = ""
+        self.mock_default_interface = "eth0"
+        self.wireguard_peers: list[dict] = []
+        self.mock_databases: dict[str, dict] = {}
+        self.mock_php_sockets: list[str] = [
+            "unix:/run/php/php8.2-fpm.sock",
+            "unix:/run/php/php8.3-fpm.sock",
+        ]
         self.mock_listening_ports: list[dict] = [
             {"proto": "tcp", "host": "0.0.0.0", "port": "22", "is_loopback": False, "is_public": True, "process": "sshd"},
             {"proto": "tcp", "host": "0.0.0.0", "port": "80", "is_loopback": False, "is_public": True, "process": "nginx"},
@@ -296,8 +321,35 @@ class MockSystemDriver:
             "domains": domain_list,
             "expiry": (datetime.datetime.now() + datetime.timedelta(days=90)).strftime("%Y-%m-%d"),
         })
+
+        # Also simulate Certbot modifying matching site files in sites-available / sites-enabled
+        if self.sites_available.exists():
+            for conf_file in self.sites_available.glob("*.conf"):
+                txt = conf_file.read_text(encoding="utf-8")
+                if any(d in txt for d in domain_list):
+                    if "listen 443 ssl" not in txt:
+                        ssl_lines = (
+                            f"\n    listen 443 ssl; # managed by Certbot\n"
+                            f"    ssl_certificate /etc/letsencrypt/live/{primary}/fullchain.pem; # managed by Certbot\n"
+                            f"    ssl_certificate_key /etc/letsencrypt/live/{primary}/privkey.pem; # managed by Certbot\n"
+                            f"    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot\n"
+                        )
+                        updated = re.sub(r"(\blisten\s+80;)", r"\1" + ssl_lines, txt, count=1)
+                        conf_file.write_text(updated, encoding="utf-8")
+                        en_file = self.sites_enabled / conf_file.name
+                        if en_file.exists():
+                            en_file.write_text(updated, encoding="utf-8")
+
         domains_str = ", ".join(domain_list)
         return True, f"Successfully obtained certificate for {domains_str}\nCertificate is saved at: /etc/letsencrypt/live/{primary}/fullchain.pem"
+
+    async def delete_certificate(self, cert_name: str) -> tuple[bool, str]:
+        clean_name = re.sub(r"[^a-zA-Z0-9_\.-]", "", cert_name.strip())
+        self.mock_certs = [
+            c for c in self.mock_certs
+            if c["name"] != clean_name and clean_name not in c.get("domains", [])
+        ]
+        return True, f"Mock: Certificate '{clean_name}' deleted."
 
     async def list_certificates(self) -> list[dict]:
         return self.mock_certs
@@ -446,3 +498,108 @@ class MockSystemDriver:
 
     async def read_sysctl_setting(self, key: str) -> str:
         return self.mock_sysctl.get(key, "1")
+
+    async def create_database_and_user(self, db_name: str, db_user: str, db_pass: str) -> tuple[bool, str]:
+        self.mock_databases[db_name] = {
+            "user": db_user,
+            "pass": db_pass,
+        }
+        return True, f"Mock database '{db_name}' and user '{db_user}' created successfully"
+
+    async def dump_database(self, db_name: str, target_file: Path) -> tuple[bool, str]:
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        content = (
+            f"-- Pyx Panel Mock Database Dump\n"
+            f"-- Database: {db_name}\n"
+            f"CREATE TABLE IF NOT EXISTS wp_options (option_id bigint(20), option_name varchar(191));\n"
+            f"INSERT INTO wp_options VALUES (1, 'siteurl');\n"
+        )
+        target_file.write_text(content, encoding="utf-8")
+        return True, f"Mock database '{db_name}' dumped successfully to {target_file}"
+
+    async def list_php_fpm_sockets(self) -> list[str]:
+        return list(self.mock_php_sockets)
+
+    async def generate_wireguard_keypair(self) -> tuple[str, str]:
+        key = bytearray(secrets.token_bytes(32))
+        key[0] &= 248
+        key[31] &= 127
+        key[31] |= 64
+        priv = base64.b64encode(bytes(key)).decode("ascii")
+        pub = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+        if not self.wireguard_private_key:
+            self.wireguard_private_key = priv
+            self.wireguard_public_key = pub
+        return priv, pub
+
+    async def generate_wireguard_psk(self) -> str:
+        return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+
+    async def get_default_network_interface(self) -> str:
+        return self.mock_default_interface
+
+    async def start_wireguard(self, interface: str = "wg0") -> tuple[bool, str]:
+        self.wireguard_running = True
+        return True, f"Mock WireGuard service '{interface}' started successfully"
+
+    async def stop_wireguard(self, interface: str = "wg0") -> tuple[bool, str]:
+        self.wireguard_running = False
+        return True, f"Mock WireGuard service '{interface}' stopped successfully"
+
+    async def get_wireguard_status(self, interface: str = "wg0") -> dict:
+        installed = "wireguard" in self.mock_installed_packages
+        pub_key = self.wireguard_public_key or "MOCK_WG_SERVER_PUBKEY_BASE64_KEY="
+        listen_port = self.wireguard_listen_port
+
+        peers = []
+        if self.wireguard_running:
+            now_ts = int(datetime.datetime.now().timestamp())
+            for idx, p in enumerate(self.wireguard_peers):
+                peers.append({
+                    "public_key": p.get("public_key", f"MOCK_PEER_{idx}_KEY="),
+                    "endpoint": p.get("endpoint", "198.51.100.25:51820"),
+                    "allowed_ips": p.get("allowed_ips", f"10.8.0.{idx+2}/32"),
+                    "latest_handshake": p.get("latest_handshake", now_ts - (idx * 60 + 30)),
+                    "transfer_rx": p.get("transfer_rx", (idx + 1) * 1048576),
+                    "transfer_tx": p.get("transfer_tx", (idx + 1) * 2097152),
+                })
+
+        return {
+            "installed": installed,
+            "active": self.wireguard_running,
+            "interface": interface,
+            "public_key": pub_key,
+            "listen_port": listen_port,
+            "peers": peers,
+        }
+
+    async def sync_wireguard_peer(
+        self,
+        interface: str,
+        public_key: str,
+        allowed_ips: str,
+        preshared_key: str = "",
+        remove: bool = False,
+    ) -> tuple[bool, str]:
+        if remove:
+            self.wireguard_peers = [p for p in self.wireguard_peers if p.get("public_key") != public_key]
+            return True, f"Mock peer removed from {interface}"
+
+        existing = next((p for p in self.wireguard_peers if p.get("public_key") == public_key), None)
+        now_ts = int(datetime.datetime.now().timestamp())
+        if existing:
+            existing["allowed_ips"] = allowed_ips
+            if preshared_key:
+                existing["preshared_key"] = preshared_key
+        else:
+            self.wireguard_peers.append({
+                "public_key": public_key,
+                "allowed_ips": allowed_ips,
+                "preshared_key": preshared_key,
+                "endpoint": "198.51.100.25:51820",
+                "latest_handshake": now_ts - 10,
+                "transfer_rx": 4096,
+                "transfer_tx": 8192,
+            })
+        return True, f"Mock peer synced on {interface}"
+

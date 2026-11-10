@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import re
+import secrets
 import shutil
+import tempfile
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -207,6 +210,20 @@ class LinuxSystemDriver:
             cmd.append("--register-unsafely-without-email")
 
         code, stdout, stderr = await self.run_command(cmd)
+        output = (stdout + "\n" + stderr).strip()
+        return code == 0, output
+
+    async def delete_certificate(self, cert_name: str) -> tuple[bool, str]:
+        clean_name = re.sub(r"[^a-zA-Z0-9_\.-]", "", cert_name.strip())
+        if not clean_name:
+            return False, "Invalid certificate name."
+        code, stdout, stderr = await self.run_command([
+            "certbot",
+            "delete",
+            "--cert-name",
+            clean_name,
+            "--non-interactive",
+        ])
         output = (stdout + "\n" + stderr).strip()
         return code == 0, output
 
@@ -586,3 +603,228 @@ class LinuxSystemDriver:
     async def read_sysctl_setting(self, key: str) -> str:
         code, stdout, _ = await self.run_command(["sysctl", "-n", key])
         return stdout.strip() if code == 0 else ""
+
+    async def create_database_and_user(self, db_name: str, db_user: str, db_pass: str) -> tuple[bool, str]:
+        clean_db = re.sub(r"[^a-zA-Z0-9_]", "", db_name)
+        clean_user = re.sub(r"[^a-zA-Z0-9_]", "", db_user)
+        escaped_pass = db_pass.replace("'", "\\'")
+
+        sql = (
+            f"CREATE DATABASE IF NOT EXISTS `{clean_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "
+            f"CREATE USER IF NOT EXISTS '{clean_user}'@'localhost' IDENTIFIED BY '{escaped_pass}'; "
+            f"GRANT ALL PRIVILEGES ON `{clean_db}`.* TO '{clean_user}'@'localhost'; "
+            f"FLUSH PRIVILEGES;"
+        )
+        code, stdout, stderr = await self.run_command(["mysql", "-e", sql])
+        if code != 0:
+            code, stdout, stderr = await self.run_command(["mariadb", "-e", sql])
+            if code != 0:
+                return False, f"Database provisioning failed: {(stderr or stdout).strip()}"
+
+        return True, f"Database '{clean_db}' and user '{clean_user}' created successfully"
+
+    async def dump_database(self, db_name: str, target_file: Path) -> tuple[bool, str]:
+        clean_db = re.sub(r"[^a-zA-Z0-9_]", "", db_name)
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+
+        dump_bin = "mysqldump"
+        c_ver, _, _ = await self.run_command(["which", "mariadb-dump"])
+        if c_ver == 0:
+            dump_bin = "mariadb-dump"
+
+        try:
+            with open(target_file, "w", encoding="utf-8") as f:
+                proc = await asyncio.create_subprocess_exec(
+                    dump_bin, clean_db,
+                    stdout=f,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    return False, f"Database dump failed: {stderr.decode('utf-8', errors='replace').strip()}"
+            return True, f"Database '{clean_db}' dumped successfully to {target_file}"
+        except Exception as e:
+            return False, f"Failed to dump database: {e}"
+
+    async def list_php_fpm_sockets(self) -> list[str]:
+        sockets: list[str] = []
+        php_run = Path("/run/php")
+        if php_run.exists():
+            for p in php_run.glob("*.sock"):
+                if "fpm" in p.name:
+                    sockets.append(f"unix:{p.as_posix()}")
+
+        common_candidates = [
+            "/run/php/php8.3-fpm.sock",
+            "/run/php/php8.2-fpm.sock",
+            "/run/php/php8.1-fpm.sock",
+            "/run/php/php-fpm.sock",
+            "/var/run/php/php-fpm.sock",
+        ]
+        for c in common_candidates:
+            sock_p = Path(c)
+            sock_str = f"unix:{sock_p.as_posix()}"
+            if sock_p.exists() and sock_str not in sockets:
+                sockets.append(sock_str)
+
+        if not sockets:
+            sockets.append("unix:/run/php/php-fpm.sock")
+
+        return sorted(sockets, reverse=True)
+
+    async def generate_wireguard_keypair(self) -> tuple[str, str]:
+        # Try native wg genkey / wg pubkey
+        c1, priv_out, _ = await self.run_command(["wg", "genkey"])
+        if c1 == 0 and priv_out.strip():
+            priv = priv_out.strip()
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "wg", "pubkey",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                pub_bytes, _ = await proc.communicate(input=priv.encode("ascii"))
+                if proc.returncode == 0 and pub_bytes.strip():
+                    return priv, pub_bytes.decode("ascii").strip()
+            except Exception:
+                pass
+
+        # Fallback pseudo-keypair if wg is not available
+        key = bytearray(secrets.token_bytes(32))
+        key[0] &= 248
+        key[31] &= 127
+        key[31] |= 64
+        priv = base64.b64encode(bytes(key)).decode("ascii")
+        pub = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+        return priv, pub
+
+    async def generate_wireguard_psk(self) -> str:
+        code, stdout, _ = await self.run_command(["wg", "genpsk"])
+        if code == 0 and stdout.strip():
+            return stdout.strip()
+        return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+
+    async def get_default_network_interface(self) -> str:
+        code, stdout, _ = await self.run_command(["ip", "route", "show", "default"])
+        if code == 0 and stdout.strip():
+            m = re.search(r"\bdev\s+([a-zA-Z0-9_\-\.]+)", stdout)
+            if m:
+                return m.group(1).strip()
+        return "eth0"
+
+    async def start_wireguard(self, interface: str = "wg0") -> tuple[bool, str]:
+        # Ensure ip_forwarding is active
+        await self.run_command(["sysctl", "-w", "net.ipv4.ip_forward=1"])
+        code, stdout, stderr = await self.run_command(["systemctl", "start", f"wg-quick@{interface}"])
+        if code != 0:
+            return False, (stderr or stdout).strip() or "Failed to start WireGuard"
+        return True, f"WireGuard service '{interface}' started successfully"
+
+    async def stop_wireguard(self, interface: str = "wg0") -> tuple[bool, str]:
+        code, stdout, stderr = await self.run_command(["systemctl", "stop", f"wg-quick@{interface}"])
+        if code != 0:
+            return False, (stderr or stdout).strip() or "Failed to stop WireGuard"
+        return True, f"WireGuard service '{interface}' stopped successfully"
+
+    async def get_wireguard_status(self, interface: str = "wg0") -> dict:
+        c_which, _, _ = await self.run_command(["which", "wg"])
+        installed = c_which == 0
+
+        c_act, stdout_act, _ = await self.run_command(["systemctl", "is-active", f"wg-quick@{interface}"])
+        is_active = c_act == 0 and stdout_act.strip() == "active"
+
+        result = {
+            "installed": installed,
+            "active": is_active,
+            "interface": interface,
+            "public_key": "",
+            "listen_port": 51820,
+            "peers": [],
+        }
+
+        if not is_active:
+            return result
+
+        code, stdout, _ = await self.run_command(["wg", "show", interface, "dump"])
+        if code != 0 or not stdout.strip():
+            return result
+
+        lines = [line.strip() for line in stdout.strip().splitlines() if line.strip()]
+        if not lines:
+            return result
+
+        # First line is interface: private-key public-key listen-port fwmark
+        iface_parts = lines[0].split("\t") if "\t" in lines[0] else lines[0].split()
+        if len(iface_parts) >= 3:
+            result["public_key"] = iface_parts[1]
+            try:
+                result["listen_port"] = int(iface_parts[2])
+            except ValueError:
+                pass
+
+        peers = []
+        # Remaining lines are peers:
+        # public-key preshared-key endpoint allowed-ips latest-handshake transfer-rx transfer-tx persistent-keepalive
+        for line in lines[1:]:
+            parts = line.split("\t") if "\t" in line else line.split()
+            if len(parts) >= 7:
+                try:
+                    handshake = int(parts[4])
+                except ValueError:
+                    handshake = 0
+                try:
+                    rx = int(parts[5])
+                except ValueError:
+                    rx = 0
+                try:
+                    tx = int(parts[6])
+                except ValueError:
+                    tx = 0
+
+                peers.append({
+                    "public_key": parts[0],
+                    "endpoint": parts[2] if parts[2] != "(none)" else "",
+                    "allowed_ips": parts[3],
+                    "latest_handshake": handshake,
+                    "transfer_rx": rx,
+                    "transfer_tx": tx,
+                })
+
+        result["peers"] = peers
+        return result
+
+    async def sync_wireguard_peer(
+        self,
+        interface: str,
+        public_key: str,
+        allowed_ips: str,
+        preshared_key: str = "",
+        remove: bool = False,
+    ) -> tuple[bool, str]:
+        if remove:
+            code, stdout, stderr = await self.run_command(["wg", "set", interface, "peer", public_key, "remove"])
+            if code != 0:
+                return False, (stderr or stdout).strip()
+            return True, f"Peer {public_key[:8]}... removed from {interface}"
+
+        cmd = ["wg", "set", interface, "peer", public_key, "allowed-ips", allowed_ips]
+        psk_file = None
+        try:
+            if preshared_key:
+                with tempfile.NamedTemporaryFile("w", delete=False) as tf:
+                    tf.write(preshared_key)
+                    psk_file = tf.name
+                cmd.extend(["preshared-key", psk_file])
+
+            code, stdout, stderr = await self.run_command(cmd)
+            if code != 0:
+                return False, (stderr or stdout).strip()
+            return True, f"Peer {public_key[:8]}... synced on {interface}"
+        finally:
+            if psk_file and os.path.exists(psk_file):
+                try:
+                    os.unlink(psk_file)
+                except OSError:
+                    pass
+

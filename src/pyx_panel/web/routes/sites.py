@@ -163,3 +163,11 @@ async def toggle_site(name: str):
 async def delete_site(name: str):
     _, msg = await nginx_manager.delete_site(name)
     return RedirectResponse(url=f"/sites?msg={msg}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/{name}/remove-ssl")
+async def remove_site_ssl(name: str):
+    success, msg = await nginx_manager.remove_ssl_from_site(name)
+    if not success:
+        return RedirectResponse(url=f"/sites?error={msg}", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/sites?msg={msg}", status_code=status.HTTP_303_SEE_OTHER)
