@@ -538,6 +538,26 @@ class WireGuardManager:
 
         return "\n".join(lines)
 
+    async def generate_client_qr_svg(self, peer_name: str) -> str:
+        """Generates pixel-perfect SVG QR code for a peer configuration."""
+        conf_text = await self.generate_client_config(peer_name)
+        if not conf_text:
+            return ""
+        import qrcode
+        import qrcode.image.svg
+
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=2,
+            image_factory=qrcode.image.svg.SvgPathImage,
+        )
+        qr.add_data(conf_text)
+        qr.make(fit=True)
+        img = qr.make_image(attrib={"class": "wireguard-qr", "style": "max-width: 100%; height: auto;"})
+        return img.to_string().decode("utf-8")
+
     async def update_settings(self, form: WireGuardSettingsForm) -> tuple[bool, str]:
         """Updates listen port, server IP, and default DNS in server configuration."""
         if not self.is_configured():

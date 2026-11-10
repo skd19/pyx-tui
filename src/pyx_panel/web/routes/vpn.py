@@ -152,6 +152,18 @@ async def download_peer_config(name: str):
     )
 
 
+@router.get("/peer/{name}/qr.svg")
+async def get_peer_qr_svg(name: str):
+    svg_text = await wireguard_manager.generate_client_qr_svg(name)
+    if not svg_text:
+        return Response(status_code=404, content="Peer not found", media_type="text/plain")
+    return Response(
+        content=svg_text,
+        media_type="image/svg+xml; charset=utf-8",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
 @router.post("/settings")
 async def update_settings(
     server_port: int = Form(51820),

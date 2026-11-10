@@ -151,6 +151,12 @@ async def test_wireguard_peer_lifecycle():
     assert "AllowedIPs = 10.8.0.0/24" in conf2
     assert "PersistentKeepalive = 25" in conf2
 
+    # QR SVG check
+    svg1 = await wireguard_manager.generate_client_qr_svg("phone-1")
+    assert "<svg" in svg1
+    assert "</svg>" in svg1
+    assert "wireguard-qr" in svg1
+
     # 5. Toggle peer
     toggle_ok, toggle_msg = await wireguard_manager.toggle_peer("phone-1")
     assert toggle_ok
@@ -266,6 +272,13 @@ async def test_wireguard_web_endpoints(auth_client):
     assert resp_dl.status_code == 200
     assert 'attachment; filename="pixel-phone.conf"' in resp_dl.headers["content-disposition"]
     assert "PersistentKeepalive = 25" in resp_dl.text
+
+    # 5b. GET /vpn/peer/{name}/qr.svg (SVG QR code for mobile scanning)
+    resp_qr = auth_client.get("/vpn/peer/pixel-phone/qr.svg")
+    assert resp_qr.status_code == 200
+    assert "image/svg+xml" in resp_qr.headers["content-type"]
+    assert "<svg" in resp_qr.text
+    assert "</svg>" in resp_qr.text
 
     # 6. POST /vpn/stop (port blocking)
     resp_stop = auth_client.post("/vpn/stop", follow_redirects=False)
