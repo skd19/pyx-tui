@@ -58,6 +58,16 @@ def test_sites_flow(auth_client):
     assert "return 301 $scheme://www.example.com$request_uri;" in res_editor.text
     assert "server_name www.example.com;" in res_editor.text
 
+    # 3b. Test snippet API endpoint
+    res_snip = auth_client.get("/sites/snippets/cloudflare-keepalive")
+    assert res_snip.status_code == 200
+    snip_data = res_snip.json()
+    assert "keepalive_timeout 120s;" in snip_data["content"]
+
+    res_snip_full = auth_client.get("/sites/snippets/full-go-template?domain=example.com&upstream=127.0.0.1:8080")
+    assert res_snip_full.status_code == 200
+    assert "listen 443 ssl http2;" in res_snip_full.json()["content"]
+
     # 4. Toggle site
     res_toggle = auth_client.post("/sites/e2e-go-app/toggle", follow_redirects=True)
     assert res_toggle.status_code == 200

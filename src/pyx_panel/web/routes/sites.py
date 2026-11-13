@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pyx_panel.services.nginx_manager import (
     ReverseProxyForm,
     StaticSiteForm,
@@ -40,9 +40,13 @@ async def create_reverse_proxy(
     domains: str = Form(...),
     upstream: str = Form(...),
     www_handling: str = Form("none"),
-    enable_websocket: bool = Form(False),
-    client_max_body_size: str = Form("50M"),
+    enable_websocket: bool = Form(True),
+    client_max_body_size: str = Form("256M"),
     enable_immediately: bool = Form(True),
+    enable_cloudflare_keepalive: bool = Form(True),
+    enable_upstream_keepalive: bool = Form(True),
+    upstream_keepalive_conns: int = Form(64),
+    enable_certbot_ssl: bool = Form(False),
 ):
     form = ReverseProxyForm(
         name=name,
@@ -52,6 +56,10 @@ async def create_reverse_proxy(
         enable_websocket=enable_websocket,
         client_max_body_size=client_max_body_size,
         enable_immediately=enable_immediately,
+        enable_cloudflare_keepalive=enable_cloudflare_keepalive,
+        enable_upstream_keepalive=enable_upstream_keepalive,
+        upstream_keepalive_conns=upstream_keepalive_conns,
+        enable_certbot_ssl=enable_certbot_ssl,
     )
     config = nginx_manager.generate_reverse_proxy_config(form)
     success, msg = await nginx_manager.save_and_validate_site(
@@ -68,6 +76,14 @@ async def create_reverse_proxy(
         url=f"/sites?msg=Site '{form.name}' created successfully",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.get("/snippets/{snippet_id}")
+async def get_site_snippet(snippet_id: str, domain: str = "yourdomain.com", upstream: str = "127.0.0.1:8080"):
+    snippet = nginx_manager.get_config_snippet(snippet_id, domain=domain, upstream=upstream)
+    if not snippet:
+        return JSONResponse(status_code=404, content={"error": "Snippet not found"})
+    return JSONResponse(content={"snippet_id": snippet_id, "content": snippet})
 
 
 @router.post("/new/static")

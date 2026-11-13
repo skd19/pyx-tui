@@ -23,6 +23,7 @@ class MockSystemDriver:
         self.nginx_conf = self.base_dir / "nginx" / "nginx.conf"
         self.systemd_dir = self.base_dir / "systemd" / "system"
         self.wireguard_dir = self.base_dir / "wireguard"
+        self.certbot_webroot = self.base_dir / "var" / "www" / "certbot"
         
         # Ensure directories exist
         self.sites_available.mkdir(parents=True, exist_ok=True)
@@ -30,6 +31,19 @@ class MockSystemDriver:
         self.conf_d.mkdir(parents=True, exist_ok=True)
         self.systemd_dir.mkdir(parents=True, exist_ok=True)
         self.wireguard_dir.mkdir(parents=True, exist_ok=True)
+        self.certbot_webroot.mkdir(parents=True, exist_ok=True)
+
+        # Default global WebSocket upgrade mapping in conf.d
+        ws_map_file = self.conf_d / "websocket-upgrade.conf"
+        if not ws_map_file.exists():
+            ws_map_file.write_text(
+                "# WebSocket connection upgrade mapping for persistent keep-alive proxying\n"
+                "map $http_upgrade $connection_upgrade {\n"
+                "    default upgrade;\n"
+                "    ''      '';\n"
+                "}\n",
+                encoding="utf-8",
+            )
 
         # Mock runtime state
         self.service_states: dict[str, dict] = {}

@@ -346,4 +346,113 @@ async def test_remove_ssl_from_site_lifecycle(manager):
     await manager.delete_site(site_name)
 
 
+def test_generate_reverse_proxy_with_cloudflare_and_upstream_keepalive(manager):
+    form = ReverseProxyForm(
+        name="go-android",
+        domains="yourdomain.com www.yourdomain.com",
+        upstream="http://127.0.0.1:8080",
+        enable_websocket=True,
+        client_max_body_size="256M",
+        enable_cloudflare_keepalive=True,
+        enable_upstream_keepalive=True,
+        upstream_keepalive_conns=64,
+        enable_certbot_ssl=False,
+    )
+    conf = manager.generate_reverse_proxy_config(form)
+
+    # 1. Upstream block with keepalive 64
+    assert "upstream go_android_backend {" in conf
+    assert "server 127.0.0.1:8080;" in conf
+    assert "keepalive 64;" in conf
+    assert "proxy_pass http://go_android_backend;" in conf
+
+    # 2. Cloudflare keep-alive
+    assert "keepalive_timeout 120s;" in conf
+    assert "keepalive_requests 10000;" in conf
+
+    # 3. Cloudflare headers
+    assert "proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;" in conf
+    assert "proxy_set_header CF-Ray $http_cf_ray;" in conf
+    assert "proxy_set_header CF-Visitor $http_cf_visitor;" in conf
+
+    # 4. Timeouts & WebSockets
+    assert "proxy_connect_timeout 10s;" in conf
+    assert "proxy_read_timeout 120s;" in conf
+    assert "proxy_set_header Upgrade $http_upgrade;" in conf
+    assert "proxy_set_header Connection $connection_upgrade;" in conf
+
+    # 5. ACME challenge pass-through
+    assert "location /.well-known/acme-challenge/ {" in conf
+    assert "root /var/www/certbot;" in conf
+    assert "client_max_body_size 256M;" in conf
+
+
+def test_generate_reverse_proxy_with_certbot_ssl(manager):
+    form = ReverseProxyForm(
+        name="go-android",
+        domains="yourdomain.com www.yourdomain.com",
+        upstream="127.0.0.1:8080",
+        enable_websocket=True,
+        client_max_body_size="256M",
+        enable_cloudflare_keepalive=True,
+        enable_upstream_keepalive=True,
+        enable_certbot_ssl=True,
+    )
+    conf = manager.generate_reverse_proxy_config(form)
+
+    # Port 80 redirect with ACME challenge pass-through
+    assert "listen 80;" in conf
+    assert "location /.well-known/acme-challenge/ {" in conf
+    assert "return 301 https://$host$request_uri;" in conf
+
+    # Port 443 HTTPS Server with HTTP/2
+    assert "listen 443 ssl http2;" in conf
+    assert "ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;" in conf
+    assert "ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;" in conf
+
+    # Modern TLS Security & Rapid Resumption
+    assert "ssl_protocols TLSv1.2 TLSv1.3;" in conf
+    assert "ssl_session_cache shared:SSL:20m;" in conf
+    assert "ssl_session_timeout 1d;" in conf
+    assert "ssl_session_tickets on;" in conf
+
+    # Cloudflare Keep-Alive & Upstream
+    assert "keepalive_timeout 120s;" in conf
+    assert "proxy_pass http://go_android_backend;" in conf
+
+
+def test_websocket_upgrade_conf_and_webroot(manager):
+    ws_conf = manager.conf_d_dir / "websocket-upgrade.conf"
+    assert manager.driver.file_exists(ws_conf)
+    content = manager.driver.read_file(ws_conf)
+    assert "map $http_upgrade $connection_upgrade" in content
+    assert "default upgrade;" in content
+
+    # Certbot webroot
+    if hasattr(manager.driver, "certbot_webroot"):
+        assert manager.driver.certbot_webroot.exists()
+
+
+def test_get_config_snippet(manager):
+    cf_snip = manager.get_config_snippet("cloudflare-keepalive")
+    assert "keepalive_timeout 120s;" in cf_snip
+    assert "CF-Connecting-IP" in cf_snip
+
+    up_snip = manager.get_config_snippet("upstream-keepalive", upstream="127.0.0.1:9000")
+    assert "upstream go_backend {" in up_snip
+    assert "server 127.0.0.1:9000;" in up_snip
+    assert "keepalive 64;" in up_snip
+
+    ssl_snip = manager.get_config_snippet("certbot-ssl", domain="mysite.com")
+    assert "listen 443 ssl http2;" in ssl_snip
+    assert "fullchain.pem" in ssl_snip
+    assert "/var/www/certbot" in ssl_snip
+
+    full_snip = manager.get_config_snippet("full-go-template", domain="testapp.com", upstream="127.0.0.1:8080")
+    assert "listen 443 ssl http2;" in full_snip
+    assert "upstream" in full_snip
+    assert "keepalive_timeout 120s;" in full_snip
+
+
+
 

@@ -48,7 +48,31 @@
     </div>
 
     <!-- Raw Editor Card -->
-    <div class="card shadow-sm">
+    <div class="card shadow-sm" x-data="{
+        insertSnippet(type) {
+            const domain = '{{ site.domains[0] if site.domains else 'yourdomain.com' }}';
+            const upstream = '{{ site.proxy_pass or '127.0.0.1:8080' }}';
+            fetch(`/sites/snippets/${type}?domain=${encodeURIComponent(domain)}&upstream=${encodeURIComponent(upstream)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.content) {
+                        const textarea = document.getElementById('configEditor');
+                        if (type === 'full-go-template') {
+                            if (confirm('Replace editor content with full Go/Cloudflare/Certbot template?')) {
+                                textarea.value = data.content;
+                            }
+                        } else {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const current = textarea.value;
+                            textarea.value = current.substring(0, start) + '\n' + data.content + '\n' + current.substring(end);
+                            textarea.focus();
+                        }
+                    }
+                })
+                .catch(err => alert('Failed to fetch snippet: ' + err));
+        }
+    }">
         <div class="card-header d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
             <span class="text-xs fw-semibold text-uppercase text-muted">
                 Nginx Configuration (<code>/etc/nginx/sites-available/{{ site.filename }}</code>)
@@ -58,9 +82,30 @@
             </span>
         </div>
 
+        <!-- Quick Snippets Toolbar -->
+        <div class="px-3 pt-2 pb-2 bg-light border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <span class="text-xs fw-semibold text-uppercase text-muted d-flex align-items-center gap-1.5">
+                <i class="fa-solid fa-puzzle-piece text-primary"></i> Quick Config Blocks:
+            </span>
+            <div class="d-flex flex-wrap gap-1.5">
+                <button type="button" @click="insertSnippet('cloudflare-keepalive')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Insert Cloudflare Keep-Alive & Visitor Headers">
+                    <i class="fa-solid fa-bolt text-warning me-1"></i> Cloudflare Keep-Alive
+                </button>
+                <button type="button" @click="insertSnippet('upstream-keepalive')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Insert Upstream Keep-Alive 64 Connection Pool">
+                    <i class="fa-solid fa-arrows-split-up-and-left text-success me-1"></i> Upstream Pool (64)
+                </button>
+                <button type="button" @click="insertSnippet('certbot-ssl')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Insert Certbot ACME Redirect & Port 443 SSL Block">
+                    <i class="fa-solid fa-lock text-info me-1"></i> Certbot SSL & Redirect
+                </button>
+                <button type="button" @click="insertSnippet('full-go-template')" class="btn btn-sm btn-outline-primary text-xs py-1 px-2" title="Load Complete Go / Fiber / Cloudflare Production Template">
+                    <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Full Go-Android Template
+                </button>
+            </div>
+        </div>
+
         <div class="card-body p-3">
             <form action="/sites/{{ site.name }}/save" method="POST">
-                <textarea name="content" rows="22" required spellcheck="false"
+                <textarea id="configEditor" name="content" rows="22" required spellcheck="false"
                           class="form-control font-monospace text-sm p-3 mb-3 bg-light border"
                           style="line-height: 1.6; tab-size: 4;">{{ site.content }}</textarea>
 

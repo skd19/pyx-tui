@@ -46,8 +46,14 @@ class ReverseProxyForm(BaseModel):
     upstream: str  # e.g. "http://127.0.0.1:8080"
     www_handling: str = "none"  # "none", "redirect_to_www", "redirect_to_root", "both"
     enable_websocket: bool = True
-    client_max_body_size: str = "50M"
+    client_max_body_size: str = "256M"
     enable_immediately: bool = True
+    enable_cloudflare_keepalive: bool = False
+    enable_upstream_keepalive: bool = False
+    upstream_keepalive_conns: int = 64
+    enable_certbot_ssl: bool = False
+    cloudflare_keepalive_timeout: str = "120s"
+    cloudflare_keepalive_requests: int = 10000
 
 
 class StaticSiteForm(BaseModel):
@@ -68,6 +74,32 @@ class NginxManager:
         self.available_dir = settings.nginx_sites_available
         self.enabled_dir = settings.nginx_sites_enabled
         self.conf_d_dir = settings.nginx_conf_d
+        self.ensure_websocket_upgrade_conf()
+        self.ensure_certbot_webroot()
+
+    def ensure_websocket_upgrade_conf(self) -> None:
+        """Ensures /etc/nginx/conf.d/websocket-upgrade.conf is present globally in http context."""
+        ws_file = self.conf_d_dir / "websocket-upgrade.conf"
+        if not self.driver.file_exists(ws_file):
+            content = (
+                "# pyx-panel: WebSocket connection upgrade mapping for persistent keep-alive proxying\n"
+                "map $http_upgrade $connection_upgrade {\n"
+                "    default upgrade;\n"
+                "    ''      '';\n"
+                "}\n"
+            )
+            self.driver.write_file(ws_file, content)
+
+    def ensure_certbot_webroot(self) -> None:
+        """Ensures /var/www/certbot exists for ACME HTTP-01 challenge verification."""
+        webroot = Path("/var/www/certbot")
+        if hasattr(self.driver, "certbot_webroot"):
+            webroot = self.driver.certbot_webroot
+        if not self.driver.file_exists(webroot):
+            try:
+                webroot.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
 
     def _sanitize_name(self, name: str) -> str:
         """Sanitizes site name to a safe filename."""
@@ -220,55 +252,259 @@ class NginxManager:
         return " ".join(raw_list), ""
 
     def generate_reverse_proxy_config(self, form: ReverseProxyForm) -> str:
-        """Generates standard Nginx reverse proxy configuration."""
+        """Generates standard or high-performance Cloudflare/Certbot Nginx reverse proxy configuration."""
+        self.ensure_websocket_upgrade_conf()
+        self.ensure_certbot_webroot()
+
         domains_str, redirect_block = self._resolve_site_domains(form.domains, form.www_handling)
 
-        upstream = form.upstream.strip()
-        if not upstream.startswith("http://") and not upstream.startswith("https://"):
-            upstream = f"http://{upstream}"
+        raw_upstream = form.upstream.strip()
+        clean_target = re.sub(r"^https?://", "", raw_upstream).rstrip("/")
+        if not raw_upstream.startswith("http://") and not raw_upstream.startswith("https://"):
+            raw_upstream = f"http://{raw_upstream}"
 
-        websocket_block = ""
-        if form.enable_websocket:
-            websocket_block = """        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";"""
+        upstream_block = ""
+        proxy_pass_target = raw_upstream
 
-        config = f"""{redirect_block}server {{
-    listen 80;
-    server_name {domains_str};
+        if form.enable_upstream_keepalive:
+            clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", form.name.strip()).strip("_") or "app"
+            upstream_name = f"{clean_name}_backend"
+            upstream_block = f"""# Upstream Backend with Persistent Keep-Alive Connection Pooling
+upstream {upstream_name} {{
+    server {clean_target};
 
-    client_max_body_size {form.client_max_body_size};
+    # Maintain up to {form.upstream_keepalive_conns} idle keep-alive connections to backend
+    keepalive {form.upstream_keepalive_conns};
+}}
 
-    # Security: Block hidden files (.env, .git, etc.)
-    location ~ /\\.(?!well-known) {{
-        deny all;
-        return 404;
-    }}
+"""
+            proxy_pass_target = f"http://{upstream_name}"
 
-    # Security: Block sensitive extensions
-    location ~* \\.(env|git|bak|sql|log|yml|yaml|ini|conf|sh|key|pem|crt)$ {{
-        deny all;
-        return 404;
-    }}
+        # Cloudflare keep-alive server directives
+        cloudflare_server_directives = ""
+        if form.enable_cloudflare_keepalive:
+            cloudflare_server_directives = f"""
+    # Cloudflare Keep-Alive Connection Pooling
+    keepalive_timeout {form.cloudflare_keepalive_timeout};
+    keepalive_requests {form.cloudflare_keepalive_requests};
+"""
 
-    # Security Headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        # Location headers & proxy settings
+        if form.enable_cloudflare_keepalive:
+            connection_hdr = 'proxy_set_header Connection $connection_upgrade;' if form.enable_websocket else 'proxy_set_header Connection "";'
+            websocket_hdr = '        # WebSocket support\n        proxy_set_header Upgrade $http_upgrade;\n' if form.enable_websocket else ''
+            location_proxy_settings = f"""        # Enforce HTTP/1.1 for upstream persistent keep-alive
+        proxy_http_version 1.1;
 
-    location / {{
-        proxy_pass {upstream};
-{websocket_block}
+        # Client Identity & Host Forwarding
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 90s;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+
+        # Cloudflare connecting IP pass-through
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-Ray $http_cf_ray;
+        proxy_set_header CF-Visitor $http_cf_visitor;
+
+        # Proxy timeouts aligned with backend
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 15s;
+        proxy_read_timeout 120s;
+
+{websocket_hdr}        {connection_hdr}"""
+        else:
+            websocket_block = ""
+            if form.enable_websocket:
+                websocket_block = """        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";"""
+            location_proxy_settings = f"""{websocket_block}
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 90s;"""
+
+        # Security headers
+        security_headers = """    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;"""
+
+        # ACME challenge location block
+        acme_challenge_block = """    # Certbot ACME HTTP-01 challenge validation directory
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }"""
+
+        # Security filters (hidden files & sensitive extensions)
+        security_filters = """    # Security: Block hidden files (.env, .git, etc.)
+    location ~ /\\.(?!well-known) {
+        deny all;
+        return 404;
+    }
+
+    # Security: Block sensitive extensions
+    location ~* \\.(env|git|bak|sql|log|yml|yaml|ini|conf|sh|key|pem|crt)$ {
+        deny all;
+        return 404;
+    }"""
+
+        if form.enable_certbot_ssl:
+            first_dom = [d.strip() for d in re.split(r"[\s,]+", form.domains.strip()) if d.strip()][0]
+            root_dom, _ = parse_domain_and_www_alias(first_dom)
+            cert_domain = root_dom or first_dom
+
+            cert_path = f"/etc/letsencrypt/live/{cert_domain}/fullchain.pem"
+            key_path = f"/etc/letsencrypt/live/{cert_domain}/privkey.pem"
+
+            config = f"""{upstream_block}# 1. Redirect all HTTP traffic to HTTPS (with ACME challenge pass-through)
+server {{
+    listen 80;
+    listen [::]:80;
+    server_name {domains_str};
+
+{acme_challenge_block}
+
+    location / {{
+        return 301 https://$host$request_uri;
+    }}
+}}
+
+# 2. Primary HTTPS Server (Port 443 with HTTP/2 & Cloudflare Keep-Alive)
+server {{
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {domains_str};
+
+    # Certbot Let's Encrypt Certificates
+    ssl_certificate {cert_path};
+    ssl_certificate_key {key_path};
+
+    # Modern TLS Security & Rapid Resumption
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+
+    # SSL Session Caching (Rapid 0-RTT/1-RTT Session Resumption)
+    ssl_session_cache shared:SSL:20m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets on;
+{cloudflare_server_directives}
+{security_headers}
+
+    client_max_body_size {form.client_max_body_size};
+
+{security_filters}
+
+    location / {{
+        proxy_pass {proxy_pass_target};
+{location_proxy_settings.lstrip()}
+    }}
+}}
+"""
+        else:
+            config = f"""{upstream_block}{redirect_block}server {{
+    listen 80;
+    server_name {domains_str};
+
+    client_max_body_size {form.client_max_body_size};
+{cloudflare_server_directives}
+{acme_challenge_block}
+
+{security_filters}
+
+{security_headers}
+
+    location / {{
+        proxy_pass {proxy_pass_target};
+{location_proxy_settings.lstrip()}
     }}
 }}
 """
         return config
+
+    def get_config_snippet(self, snippet_type: str, domain: str = "yourdomain.com", upstream: str = "127.0.0.1:8080") -> str:
+        """Returns standard Nginx configuration blocks for 1-click editor insertion."""
+        clean_target = re.sub(r"^https?://", "", upstream).rstrip("/")
+
+        if snippet_type == "cloudflare-keepalive":
+            return (
+                "    # Cloudflare Keep-Alive Connection Pooling\n"
+                "    keepalive_timeout 120s;\n"
+                "    keepalive_requests 10000;\n\n"
+                "    # Cloudflare connecting IP pass-through\n"
+                "    proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;\n"
+                "    proxy_set_header CF-Ray $http_cf_ray;\n"
+                "    proxy_set_header CF-Visitor $http_cf_visitor;\n\n"
+                "    # Proxy timeouts aligned with Go backend\n"
+                "    proxy_connect_timeout 10s;\n"
+                "    proxy_send_timeout 15s;\n"
+                "    proxy_read_timeout 120s;\n"
+            )
+
+        if snippet_type == "upstream-keepalive":
+            return (
+                "# Upstream Go Backend with Persistent Keep-Alive Connection Pooling\n"
+                "upstream go_backend {\n"
+                f"    server {clean_target};\n\n"
+                "    # Maintain up to 64 idle keep-alive connections to the Go backend\n"
+                "    keepalive 64;\n"
+                "}\n"
+            )
+
+        if snippet_type == "certbot-ssl":
+            root_dom, www_dom = parse_domain_and_www_alias(domain)
+            doms = f"{root_dom or domain} {www_dom}" if www_dom else domain
+            return (
+                "# 1. Redirect all HTTP traffic to HTTPS (with Certbot ACME challenge)\n"
+                "server {\n"
+                "    listen 80;\n"
+                "    listen [::]:80;\n"
+                f"    server_name {doms};\n\n"
+                "    # Certbot ACME HTTP-01 challenge validation directory\n"
+                "    location /.well-known/acme-challenge/ {\n"
+                "        root /var/www/certbot;\n"
+                "    }\n\n"
+                "    location / {\n"
+                "        return 301 https://$host$request_uri;\n"
+                "    }\n"
+                "}\n\n"
+                "# 2. Primary HTTPS Server (Port 443 with HTTP/2)\n"
+                "server {\n"
+                "    listen 443 ssl http2;\n"
+                "    listen [::]:443 ssl http2;\n"
+                f"    server_name {doms};\n\n"
+                f"    ssl_certificate /etc/letsencrypt/live/{root_dom or domain}/fullchain.pem;\n"
+                f"    ssl_certificate_key /etc/letsencrypt/live/{root_dom or domain}/privkey.pem;\n\n"
+                "    ssl_protocols TLSv1.2 TLSv1.3;\n"
+                "    ssl_prefer_server_ciphers off;\n"
+                "    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';\n\n"
+                "    ssl_session_cache shared:SSL:20m;\n"
+                "    ssl_session_timeout 1d;\n"
+                "    ssl_session_tickets on;\n"
+                "}\n"
+            )
+
+        if snippet_type == "full-go-template":
+            form = ReverseProxyForm(
+                name="go-android",
+                domains=domain,
+                upstream=upstream,
+                enable_websocket=True,
+                client_max_body_size="256M",
+                enable_cloudflare_keepalive=True,
+                enable_upstream_keepalive=True,
+                upstream_keepalive_conns=64,
+                enable_certbot_ssl=True,
+            )
+            return self.generate_reverse_proxy_config(form)
+
+        return ""
 
     def generate_static_config(self, form: StaticSiteForm) -> str:
         """Generates standard static website configuration."""
