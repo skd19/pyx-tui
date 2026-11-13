@@ -434,17 +434,21 @@ server {{
 
         if snippet_type == "cloudflare-keepalive":
             return (
-                "    # Cloudflare Keep-Alive Connection Pooling\n"
+                "    # Cloudflare Keep-Alive: paste inside server { } block\n"
                 "    keepalive_timeout 120s;\n"
-                "    keepalive_requests 10000;\n\n"
-                "    # Cloudflare connecting IP pass-through\n"
-                "    proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;\n"
-                "    proxy_set_header CF-Ray $http_cf_ray;\n"
-                "    proxy_set_header CF-Visitor $http_cf_visitor;\n\n"
-                "    # Proxy timeouts aligned with Go backend\n"
-                "    proxy_connect_timeout 10s;\n"
-                "    proxy_send_timeout 15s;\n"
-                "    proxy_read_timeout 120s;\n"
+                "    keepalive_requests 10000;\n"
+            )
+
+        if snippet_type == "cloudflare-proxy-headers":
+            return (
+                "        # Cloudflare connecting IP pass-through: paste inside location / { } block\n"
+                "        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;\n"
+                "        proxy_set_header CF-Ray $http_cf_ray;\n"
+                "        proxy_set_header CF-Visitor $http_cf_visitor;\n\n"
+                "        # Proxy timeouts aligned with Go backend\n"
+                "        proxy_connect_timeout 10s;\n"
+                "        proxy_send_timeout 15s;\n"
+                "        proxy_read_timeout 120s;\n"
             )
 
         if snippet_type == "upstream-keepalive":

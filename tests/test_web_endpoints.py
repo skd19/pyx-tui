@@ -63,6 +63,13 @@ def test_sites_flow(auth_client):
     assert res_snip.status_code == 200
     snip_data = res_snip.json()
     assert "keepalive_timeout 120s;" in snip_data["content"]
+    assert "CF-Connecting-IP" not in snip_data["content"]
+
+    res_snip_proxy = auth_client.get("/sites/snippets/cloudflare-proxy-headers")
+    assert res_snip_proxy.status_code == 200
+    proxy_data = res_snip_proxy.json()
+    assert "CF-Connecting-IP" in proxy_data["content"]
+    assert "proxy_connect_timeout" in proxy_data["content"]
 
     res_snip_full = auth_client.get("/sites/snippets/full-go-template?domain=example.com&upstream=127.0.0.1:8080")
     assert res_snip_full.status_code == 200

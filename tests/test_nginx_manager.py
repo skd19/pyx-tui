@@ -436,7 +436,15 @@ def test_websocket_upgrade_conf_and_webroot(manager):
 def test_get_config_snippet(manager):
     cf_snip = manager.get_config_snippet("cloudflare-keepalive")
     assert "keepalive_timeout 120s;" in cf_snip
-    assert "CF-Connecting-IP" in cf_snip
+    assert "keepalive_requests 10000;" in cf_snip
+    assert "CF-Connecting-IP" not in cf_snip
+    assert "proxy_connect_timeout" not in cf_snip
+
+    cf_proxy_snip = manager.get_config_snippet("cloudflare-proxy-headers")
+    assert "proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;" in cf_proxy_snip
+    assert "proxy_connect_timeout 10s;" in cf_proxy_snip
+    assert "proxy_read_timeout 120s;" in cf_proxy_snip
+    assert "keepalive_timeout" not in cf_proxy_snip
 
     up_snip = manager.get_config_snippet("upstream-keepalive", upstream="127.0.0.1:9000")
     assert "upstream go_backend {" in up_snip

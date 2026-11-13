@@ -88,8 +88,11 @@
                 <i class="fa-solid fa-puzzle-piece text-primary"></i> Quick Config Blocks:
             </span>
             <div class="d-flex flex-wrap gap-1.5">
-                <button type="button" @click="insertSnippet('cloudflare-keepalive')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Insert Cloudflare Keep-Alive & Visitor Headers">
-                    <i class="fa-solid fa-bolt text-warning me-1"></i> Cloudflare Keep-Alive
+                <button type="button" @click="insertSnippet('cloudflare-keepalive')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Place cursor inside server { } block, then click to insert keepalive_timeout & keepalive_requests">
+                    <i class="fa-solid fa-bolt text-warning me-1"></i> CF Keep-Alive <span class="text-muted">(server)</span>
+                </button>
+                <button type="button" @click="insertSnippet('cloudflare-proxy-headers')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Place cursor inside location / { } block, then click to insert CF headers and proxy timeouts">
+                    <i class="fa-solid fa-id-card text-primary me-1"></i> CF Headers <span class="text-muted">(location)</span>
                 </button>
                 <button type="button" @click="insertSnippet('upstream-keepalive')" class="btn btn-sm btn-outline-secondary text-xs py-1 px-2" title="Insert Upstream Keep-Alive 64 Connection Pool">
                     <i class="fa-solid fa-arrows-split-up-and-left text-success me-1"></i> Upstream Pool (64)
